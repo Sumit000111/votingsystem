@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OTP Verification - Voting System</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <div class="navbar container">
+      <div class="logo">🗳️ Secure Voting System</div>
+      <nav>
+        <span class="user-info" id="userInfo"></span>
+        <a href="#" onclick="logout(); return false">Logout</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="auth-container" style="max-width: 400px">
+    <!-- Message Area -->
+    <div id="messageBox"></div>
+
+    <h1 style="text-align: center; margin-bottom: 10px">Verify OTP</h1>
+    <p style="text-align: center; color: #6b7280; margin-bottom: 30px">
+      Enter the 6-digit OTP sent to your registered phone number
+    </p>
+
+    <!-- OTP Form -->
+    <form id="otpForm">
+      <!-- OTP Input -->
+      <div class="form-group">
+        <label for="otp">One-Time Password (OTP)</label>
+        <input
+          type="text"
+          id="otp"
+          placeholder="Enter 6-digit OTP"
+          maxlength="6"
+          pattern="[0-9]{6}"
+          required
+          style="
+            font-size: 24px;
+            letter-spacing: 10px;
+            text-align: center;
+            font-weight: bold;
+          "
+        />
+        <small class="text-muted" style="display: block; text-align: center"
+          >OTP is valid for 5 minutes</small
+        >
+      </div>
+
+      <!-- Verify Button -->
+      <button type="submit" class="btn btn-primary btn-block" style="margin-top: 30px">
+        Verify OTP
+      </button>
+    </form>
+
+    <!-- Resend OTP -->
+    <div style="text-align: center; margin-top: 20px">
+      <p style="margin-bottom: 10px">Didn't receive OTP?</p>
+      <button
+        type="button"
+        class="btn btn-secondary"
+        onclick="resendOTP()"
+        id="resendBtn"
+      >
+        Resend OTP
+      </button>
+    </div>
+
+    <!-- Back to Login -->
+    <p style="text-align: center; margin-top: 30px">
+      <a href="#" onclick="logout(); return false">Back to Login</a>
+    </p>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    // Check if user is authenticated
+    window.addEventListener('load', function () {
+      const token = localStorage.getItem('authToken');
+      const userId = localStorage.getItem('userId');
+      const username = localStorage.getItem('username');
+
+      if (!token || !userId) {
+        // Redirect to login if not authenticated
+        window.location.href = 'index.html';
+        return;
+      }
+
+      // Display username
+      document.getElementById('userInfo').textContent = `Logged in as: ${username}`;
+    });
+
+    // OTP Form Submission
+    document.getElementById('otpForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const otp = document.getElementById('otp').value.trim();
+      const userId = localStorage.getItem('userId');
+
+      if (otp.length !== 6) {
+        showMessage('OTP must be 6 digits', 'danger');
+        return;
+      }
+
+      try {
+        const response = await API.verifyOTP(userId, otp);
+
+        if (response.success) {
+          // Store new token with OTP verified flag
+          localStorage.setItem('authToken', response.token);
+          showMessage('OTP verified successfully! Redirecting...', 'success');
+
+          // Redirect to voting page
+          setTimeout(() => {
+            window.location.href = 'voting.html';
+          }, 1500);
+        } else {
+          showMessage(response.message || 'OTP verification failed', 'danger');
+        }
+      } catch (error) {
+        showMessage('Error: ' + error.message, 'danger');
+      }
+    });
+
+    // Resend OTP
+    async function resendOTP() {
+      const userId = localStorage.getItem('userId');
+      const resendBtn = document.getElementById('resendBtn');
+
+      // Disable button temporarily
+      resendBtn.disabled = true;
+      resendBtn.textContent = 'Sending...';
+
+      try {
+        const response = await API.resendOTP(userId);
+
+        if (response.success) {
+          showMessage(
+            'New OTP sent successfully! Check your phone.',
+            'success'
+          );
+          // Re-enable button after 30 seconds
+          setTimeout(() => {
+            resendBtn.disabled = false;
+            resendBtn.textContent = 'Resend OTP';
+          }, 30000);
+        } else {
+          showMessage(response.message || 'Failed to resend OTP', 'danger');
+          resendBtn.disabled = false;
+          resendBtn.textContent = 'Resend OTP';
+        }
+      } catch (error) {
+        showMessage('Error: ' + error.message, 'danger');
+        resendBtn.disabled = false;
+        resendBtn.textContent = 'Resend OTP';
+      }
+    }
+
+    // Show message helper
+    function showMessage(message, type = 'info') {
+      const messageBox = document.getElementById('messageBox');
+      messageBox.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+      messageBox.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Logout function
+    function logout() {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('userId');
+      localStorage.removeItem('username');
+      window.location.href = 'index.html';
+    }
+  </script>
+</body>
+</html>

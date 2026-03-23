@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Secure Voting System - Login/Register | Government of India</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- Government Header -->
+  <div class="gov-header">
+    <div class="container">
+      <div style="text-align: center; padding: 10px 0">
+        <p style="margin: 0; font-size: 12px; color: #555">Government of India | भारत सरकार</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header>
+    <div class="navbar container">
+      <div class="logo">
+        <div class="flag-colors">
+          <span class="saffron">🇮🇳</span>
+          <span class="logo-text">National Voting System</span>
+        </div>
+      </div>
+      <nav>
+        <a href="index.html">Home</a>
+        <a href="results.html">Live Results</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="auth-container">
+    <!-- Message Area -->
+    <div id="messageBox" class="hidden"></div>
+
+    <!-- ==================== -->
+    <!-- LOGIN TAB -->
+    <!-- ==================== -->
+    <div id="login" class="tab-content active">
+      <h1>🗳️ Government Voter Login</h1>
+      <p style="margin-bottom: 30px; color: #666; text-align: center; font-size: 15px">
+        Secure Authentication using Aadhaar & PAN
+      </p>
+
+      <form id="loginForm">
+        <!-- Aadhaar Number -->
+        <div class="form-group">
+          <label for="loginAadhaar">
+            Aadhaar Number <span style="color: red">*</span>
+          </label>
+          <input
+            type="text"
+            id="loginAadhaar"
+            placeholder="Enter your 12-digit Aadhaar number"
+            maxlength="12"
+            required
+          />
+          <small class="text-muted"
+            >Must be exactly 12 digits (e.g., 123456789012)</small
+          >
+        </div>
+
+        <!-- PAN Number -->
+        <div class="form-group">
+          <label for="loginPan">
+            PAN Number <span style="color: red">*</span>
+          </label>
+          <input
+            type="text"
+            id="loginPan"
+            placeholder="Enter your PAN number"
+            style="text-transform: uppercase"
+            maxlength="10"
+            required
+          />
+          <small class="text-muted">Format: ABCDE1234F</small>
+        </div>
+
+        <!-- State Selection -->
+        <div class="form-group">
+          <label for="loginState">
+            Select Your State <span style="color: red">*</span>
+          </label>
+          <select id="loginState" required>
+            <option value="">-- Choose Your State --</option>
+            <option value="Andhra Pradesh">Andhra Pradesh</option>
+            <option value="Arunachal Pradesh">Arunachal Pradesh</option>
+            <option value="Assam">Assam</option>
+            <option value="Bihar">Bihar</option>
+            <option value="Chhattisgarh">Chhattisgarh</option>
+            <option value="Delhi">Delhi</option>
+            <option value="Goa">Goa</option>
+            <option value="Gujarat">Gujarat</option>
+            <option value="Haryana">Haryana</option>
+            <option value="Himachal Pradesh">Himachal Pradesh</option>
+            <option value="Jammu and Kashmir">Jammu and Kashmir</option>
+            <option value="Jharkhand">Jharkhand</option>
+            <option value="Karnataka">Karnataka</option>
+            <option value="Kerala">Kerala</option>
+            <option value="Madhya Pradesh">Madhya Pradesh</option>
+            <option value="Maharashtra">Maharashtra</option>
+            <option value="Manipur">Manipur</option>
+            <option value="Meghalaya">Meghalaya</option>
+            <option value="Mizoram">Mizoram</option>
+            <option value="Nagaland">Nagaland</option>
+            <option value="Odisha">Odisha</option>
+            <option value="Puducherry">Puducherry</option>
+            <option value="Punjab">Punjab</option>
+            <option value="Rajasthan">Rajasthan</option>
+            <option value="Sikkim">Sikkim</option>
+            <option value="Tamil Nadu">Tamil Nadu</option>
+            <option value="Telangana">Telangana</option>
+            <option value="Tripura">Tripura</option>
+            <option value="Uttar Pradesh">Uttar Pradesh</option>
+            <option value="Uttarakhand">Uttarakhand</option>
+            <option value="West Bengal">West Bengal</option>
+          </select>
+        </div>
+
+        <!-- Submit Button -->
+        <button
+          type="submit"
+          class="btn btn-primary btn-block"
+          style="margin-top: 30px; padding: 14px"
+        >
+          🔐 Secure Login
+        </button>
+      </form>
+
+      <p style="text-align: center; margin-top: 20px; font-size: 13px; color: #999">
+        First time? Your credentials are created during the voting process.
+      </p>
+    </div>
+  </div>
+
+  <!-- Security Notice -->
+  <div class="container">
+    <div
+      style="
+        background: linear-gradient(90deg, rgba(255, 153, 51, 0.1) 0%, rgba(19, 136, 8, 0.1) 100%);
+        border-left: 4px solid #FF9933;
+        color: #001F5C;
+        padding: 20px;
+        border-radius: 8px;
+        margin-top: 30px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+      "
+    >
+      <span style="font-size: 24px">🔒</span>
+      <div>
+        <p style="color: #001F5C; margin: 0; font-weight: 500">
+          <strong>Government Security Notice:</strong> Your Aadhaar and PAN are verified but never stored in plain text. Only encrypted hashes are used for voter authentication, complying with Government of India data protection guidelines.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer
+    style="
+      text-align: center;
+      color: #666;
+      padding: 30px;
+      margin-top: 50px;
+      border-top: 2px solid #FF9933;
+      background: #f5f5f5;
+    "
+  >
+    <p style="margin: 5px 0"><strong>National Secure Voting System</strong></p>
+    <p style="margin: 5px 0; font-size: 12px">Ministry of Electronics and Information Technology</p>
+    <p style="margin: 10px 0; font-size: 11px; color: #999">&copy; 2026 Government of India. All rights reserved.</p>
+    <p style="margin: 10px 0; font-size: 11px">
+      <a href="#" style="color: #FF9933">Privacy Policy</a> | 
+      <a href="#" style="color: #FF9933">Terms & Conditions</a> |
+      <a href="#" style="color: #FF9933">Contact Us</a>
+    </p>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+</body>
+</html>

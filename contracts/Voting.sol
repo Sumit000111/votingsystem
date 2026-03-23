@@ -1,62 +1,38 @@
-
-pragma solidity ^0.5.15;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
 contract Voting {
-    struct Candidate {
-        uint id;
-        string name;
-        string party; 
-        uint voteCount;
+
+    struct Voter {
+        bool hasVoted;
+        string votedFor;
     }
 
-    mapping (uint => Candidate) public candidates;
-    mapping (address => bool) public voters;
+    mapping(address => Voter) public voters;
+    mapping(string => uint) public votes;
 
-    
-    uint public countCandidates;
-    uint256 public votingEnd;
-    uint256 public votingStart;
+    event VoteCast(address indexed voter, string indexed candidate, uint timestamp);
 
+    constructor() {}
 
-    function addCandidate(string memory name, string memory party) public  returns(uint) {
-               countCandidates ++;
-               candidates[countCandidates] = Candidate(countCandidates, name, party, 0);
-               return countCandidates;
-    }
-   
-    function vote(uint candidateID) public {
+    function vote(string memory candidate) public returns (bool) {
+        require(bytes(candidate).length > 0, "Invalid candidate");
 
-       require((votingStart <= now) && (votingEnd > now));
-   
-       require(candidateID > 0 && candidateID <= countCandidates);
-
-       //daha önce oy kullanmamıs olmalı
-       require(!voters[msg.sender]);
-              
-       voters[msg.sender] = true;
-       
-       candidates[candidateID].voteCount ++;      
-    }
-    
-    function checkVote() public view returns(bool){
-        return voters[msg.sender];
-    }
-       
-    function getCountCandidates() public view returns(uint) {
-        return countCandidates;
+        votes[candidate]++;
+        
+        emit VoteCast(msg.sender, candidate, block.timestamp);
+        return true;
     }
 
-    function getCandidate(uint candidateID) public view returns (uint,string memory, string memory,uint) {
-        return (candidateID,candidates[candidateID].name,candidates[candidateID].party,candidates[candidateID].voteCount);
+    function getVotes(string memory candidate) public view returns (uint) {
+        return votes[candidate];
     }
 
-    function setDates(uint256 _startDate, uint256 _endDate) public{
-        require((votingEnd == 0) && (votingStart == 0) && (_startDate + 1000000 > now) && (_endDate > _startDate));
-        votingEnd = _endDate;
-        votingStart = _startDate;
+    function hasVoted(address voter) public view returns (bool) {
+        return voters[voter].hasVoted;
     }
 
-    function getDates() public view returns (uint256,uint256) {
-      return (votingStart,votingEnd);
+    function getVotedFor(address voter) public view returns (string memory) {
+        return voters[voter].votedFor;
     }
 }

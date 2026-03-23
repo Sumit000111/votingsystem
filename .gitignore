@@ -1,3 +1,47 @@
-node_modules
-build
-package-lock.json
+# Git Ignore File for Voting System
+
+# Node.js
+node_modules/
+npm-debug.log
+npm-error.log
+yarn-error.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite
+mongodb/
+
+# Logs
+logs/
+*.log
+
+# Build outputs
+dist/
+build/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS files
+.DS_Store
+.LSOverride
+Thumbs.db
+
+# Blockchain data (if persisted)
+blockchain/data/

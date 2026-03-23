@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voting Dashboard - Secure Voting System</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <div class="navbar container">
+      <div class="logo">🗳️ Secure Voting System</div>
+      <nav>
+        <span class="user-info" id="userInfo"></span>
+        <a href="results.html">View Results</a>
+        <a href="#" onclick="logout(); return false">Logout</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="dashboard-container">
+    <!-- Message Area -->
+    <div id="messageBox"></div>
+
+    <!-- Status Section -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Your Status</div>
+        <div class="stat-value" id="votingStatus">Checking...</div>
+        <div class="stat-label" id="statusMessage"></div>
+      </div>
+    </div>
+
+    <!-- Already Voted Notice -->
+    <div id="alreadyVotedBox" class="alert alert-warning hidden">
+      <strong>⚠️ Notice:</strong> You have already voted. Each voter can vote
+      only once. Your vote has been securely recorded on the blockchain.
+    </div>
+
+    <!-- Voting Section -->
+    <div id="votingSection" class="hidden">
+      <h1>Cast Your Vote</h1>
+      <p style="margin-bottom: 20px; color: #6b7280">
+        Vote for your preferred Indian political party.
+      </p>
+
+      <!-- Election Type Tabs -->
+      <div id="electionTabsContainer" style="display: none; margin-bottom: 30px;">
+        <div style="display: flex; gap: 10px; border-bottom: 2px solid #e5e7eb;">
+          <button
+            id="nationalTab"
+            class="election-tab active"
+            onclick="switchElection('national')"
+            style="padding: 12px 24px; background: none; border: none; cursor: pointer; font-size: 16px; font-weight: 500; color: #2563eb; border-bottom: 3px solid #2563eb; margin-bottom: -2px; transition: all 0.3s ease"
+          >
+            🇮🇳 National Election
+          </button>
+          <button
+            id="stateTab"
+            class="election-tab"
+            onclick="switchElection('state')"
+            style="padding: 12px 24px; background: none; border: none; cursor: pointer; font-size: 16px; font-weight: 500; color: #9ca3af; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all 0.3s ease"
+          >
+            📍 State Election
+          </button>
+        </div>
+      </div>
+
+      <!-- Candidates List -->
+      <div id="candidatesContainer" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px; max-width: 600px">
+        <div class="loading">
+          <div class="spinner"></div>
+          <p>Loading candidates...</p>
+        </div>
+      </div>
+
+      <!-- Vote Button -->
+      <button
+        id="voteButton"
+        type="button"
+        class="btn btn-success btn-block"
+        onclick="submitVote()"
+        disabled
+        style="padding: 15px; font-size: 16px; margin-top: 20px"
+      >
+        🗳️ Cast Vote
+      </button>
+    </div>
+
+    <!-- Results Section -->
+    <div id="resultsSection">
+      <h2>Live Voting Results</h2>
+      <div id="resultsContainer" style="margin-top: 20px"></div>
+
+      <!-- Blockchain Info -->
+      <div id="blockchainInfoBox"></div>
+
+      <button
+        type="button"
+        class="btn btn-primary"
+        onclick="location.reload()"
+        style="margin-top: 20px"
+      >
+        Refresh Results
+      </button>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/api.js"></script>
+  <script src="js/voting.js"></script>
+
+  <!-- OTP Modal -->
+  <div id="otpModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); z-index: 1000; justify-content: center; align-items: center;">
+    <div style="background: white; border-radius: 8px; padding: 30px; max-width: 400px; width: 90%; box-shadow: 0 20px 25px rgba(0, 0, 0, 0.2);">
+      <h2 style="margin-top: 0; color: #1f2937">Verify Your Vote</h2>
+      <p style="color: #6b7280; margin-bottom: 20px">
+        Enter the 6-digit OTP sent to verify your vote for <strong id="otpCandidateName"></strong>
+      </p>
+      
+      <div style="margin-bottom: 20px">
+        <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #1f2937">OTP Code</label>
+        <input
+          id="otpInput"
+          type="text"
+          maxlength="6"
+          placeholder="000000"
+          style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-size: 24px; text-align: center; letter-spacing: 5px; font-weight: bold"
+          onkeypress="handleOtpInput(event)"
+        />
+        <div id="otpError" style="color: #dc2626; margin-top: 8px; font-size: 14px; display: none;"></div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <button
+          type="button"
+          class="btn btn-outline"
+          onclick="closeOtpModal()"
+          style="padding: 10px; border: 1px solid #d1d5db; color: #374151; cursor: pointer; border-radius: 6px; font-weight: 500; background: white"
+        >
+          Cancel
+        </button>
+        <button
+          id="otpSubmitButton"
+          type="button"
+          class="btn btn-success"
+          onclick="submitOtpAndVote()"
+          style="padding: 10px; background: #16a34a; color: white; cursor: pointer; border-radius: 6px; font-weight: 500; border: none"
+        >
+          Verify & Vote
+        </button>
+      </div>
+
+      <div style="margin-top: 15px; text-align: center; font-size: 12px; color: #9ca3af">
+        <button
+          type="button"
+          style="background: none; border: none; color: #2563eb; cursor: pointer; text-decoration: underline; padding: 0"
+          onclick="resendOtp()"
+        >
+          Didn't receive code? Resend OTP
+        </button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
