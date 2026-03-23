@@ -191,17 +191,17 @@ function displayCandidates(candidates) {
   container.innerHTML = candidates
     .map(
       (candidate) => `
-    <div class="candidate-card" onclick="selectCandidate(this, '${candidate.name}')" style="display: flex; align-items: center; gap: 15px; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 6px; cursor: pointer; transition: all 0.3s ease; background: white">
+    <div class="candidate-card" onclick="selectCandidate(this)" style="display: flex; align-items: center; gap: 15px; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 6px; cursor: pointer; transition: all 0.3s ease; background: white">
       <input
         type="radio"
         name="candidate"
-        value="${candidate.name}"
+        value="${candidate.name.replace(/"/g, '&quot;')}"
         style="width: 20px; height: 20px; cursor: pointer; flex-shrink: 0"
       />
       <div style="flex-grow: 1">
         <div style="font-weight: 600; color: #1f2937; margin-bottom: 3px">${candidate.name}</div>
-        <div style="font-size: 13px; color: #6b7280">${candidate.symbol} ${candidate.party}</div>
       </div>
+      ${candidate.image ? `<img src="${candidate.image}" alt="${candidate.party} Flag" style="width: 40px; height: 40px; object-fit: contain; border-radius: 4px; border: 1px solid #e5e7eb;" onerror="this.style.display='none'">` : ''}
     </div>
   `
     )
@@ -211,9 +211,9 @@ function displayCandidates(candidates) {
 /**
  * Handle candidate selection
  * @param {HTMLElement} element - Clicked card element
- * @param {string} candidateName - Name of selected candidate
  */
-function selectCandidate(element, candidateName) {
+function selectCandidate(element) {
+  const candidateName = element.querySelector('input[type="radio"]').value;
   // Remove selected class from all cards
   document
     .querySelectorAll('.candidate-card')
