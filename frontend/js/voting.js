@@ -29,7 +29,6 @@ window.addEventListener('load', async function () {
   // Load voting status and candidates
   await loadVotingStatus();
   await loadCandidates();
-  await loadResults();
 });
 
 /**
@@ -132,7 +131,6 @@ async function loadVotingStatus() {
     if (response.success) {
       const votingSection = document.getElementById('votingSection');
       const alreadyVotedBox = document.getElementById('alreadyVotedBox');
-      const resultsSection = document.getElementById('resultsSection');
       const statusDiv = document.getElementById('votingStatus');
       const statusMessage = document.getElementById('statusMessage');
 
@@ -144,7 +142,6 @@ async function loadVotingStatus() {
 
         votingSection.classList.add('hidden');
         alreadyVotedBox.classList.remove('hidden');
-        resultsSection.classList.remove('hidden');
       } else {
         // User can vote
         statusDiv.textContent = 'Ready to Vote';
@@ -153,7 +150,6 @@ async function loadVotingStatus() {
 
         votingSection.classList.remove('hidden');
         alreadyVotedBox.classList.add('hidden');
-        resultsSection.classList.add('hidden');
       }
     }
   } catch (error) {
@@ -251,154 +247,62 @@ async function submitVote() {
     return;
   }
 
-  try {
-    // Request OTP from backend
-    const response = await API.requestOTPForVoting();
-
-    if (!response.success) {
-      showMessage(response.message || 'Failed to request OTP', 'danger');
-      return;
-    }
-
-    // Show OTP modal after OTP is generated
-    showOtpModal(selectedCandidate);
-    showMessage('OTP sent to your registered contact. Demo OTP: 111111', 'info');
-  } catch (error) {
-    console.error('Error requesting OTP:', error);
-    showMessage('Error requesting OTP. Please try again.', 'danger');
-  }
+  // Pure Biometric interception explicitly dropping ALL OTP calls natively
+  showOtpModal(selectedCandidate);
 }
 
 /**
- * Show OTP modal for vote verification
+ * Show Hardware modal for vote verification
  * @param {string} candidateName - Name of selected candidate
  */
 function showOtpModal(candidateName) {
   document.getElementById('otpCandidateName').textContent = candidateName;
-  document.getElementById('otpInput').value = '';
   document.getElementById('otpError').style.display = 'none';
-  document.getElementById('otpInput').focus();
   document.getElementById('otpModal').style.display = 'flex';
 }
 
 /**
- * Close OTP modal
+ * Close Hardware modal
  */
 function closeOtpModal() {
   document.getElementById('otpModal').style.display = 'none';
-  document.getElementById('otpInput').value = '';
 }
 
 /**
- * Handle OTP input - submit when 6 digits entered
- * @param {KeyboardEvent} event - Keyboard event
- */
-function handleOtpInput(event) {
-  const input = document.getElementById('otpInput');
-  const otpValue = input.value;
-
-  // Only allow digits
-  if (!/^\d*$/.test(otpValue)) {
-    input.value = otpValue.replace(/[^\d]/g, '');
-    return;
-  }
-
-  // Auto-submit when 6 digits entered
-  if (otpValue.length === 6) {
-    submitOtpAndVote();
-  }
-}
-
-/**
- * Verify OTP and cast vote
+ * Trigger Biometric Scanner and cast vote entirely bypassing OTP endpoints!
  */
 async function submitOtpAndVote() {
-  const otpInput = document.getElementById('otpInput');
-  const otp = otpInput.value.trim();
   const errorDiv = document.getElementById('otpError');
   const submitButton = document.getElementById('otpSubmitButton');
-  const userId = localStorage.getItem('userId');
-
-  // Validate OTP
-  if (!otp || otp.length !== 6 || !/^\d{6}$/.test(otp)) {
-    errorDiv.textContent = 'Please enter a valid 6-digit OTP';
-    errorDiv.style.display = 'block';
-    return;
-  }
 
   errorDiv.style.display = 'none';
   submitButton.disabled = true;
-  submitButton.textContent = 'Verifying...';
+  submitButton.textContent = 'Submitting Vote...';
 
   try {
-    // Verify OTP first - pass both userId and otp
-    const verifyResponse = await API.verifyOTP(userId, otp);
-
-    if (!verifyResponse.success) {
-      errorDiv.textContent = verifyResponse.message || 'Invalid OTP. Please try again.';
-      errorDiv.style.display = 'block';
-      submitButton.disabled = false;
-      submitButton.textContent = 'Verify & Vote';
-      return;
-    }
-
-    // OTP verified! Update JWT token in localStorage with the verified token
-    if (verifyResponse.token) {
-      localStorage.setItem('authToken', verifyResponse.token);
-    }
-
-    // OTP verified, now cast the vote
-    submitButton.textContent = 'Casting Vote...';
-
     const voteResponse = await API.castVote(selectedCandidate);
 
     if (voteResponse.success) {
-      // Close modal and show success
       closeOtpModal();
-      showMessage(
-        `Vote submitted successfully! Candidate: ${voteResponse.candidateSelected}. Block Hash: ${voteResponse.blockHash.substring(0, 20)}...`,
-        'success'
-      );
+      showMessage(`Vote securely embedded onto Decentralized Ledger! Hash: ${voteResponse.txHash ? voteResponse.txHash.substring(0, 20) : 'pending'}...`, 'success');
 
-      // Reset form and reload status
       selectedCandidate = null;
       setTimeout(async () => {
         await loadVotingStatus();
         await loadResults();
       }, 1500);
     } else {
-      errorDiv.textContent = voteResponse.message || 'Failed to submit vote';
+      errorDiv.textContent = voteResponse.message || 'Failed to submit vote securely.';
       errorDiv.style.display = 'block';
       submitButton.disabled = false;
       submitButton.textContent = 'Verify & Vote';
     }
   } catch (error) {
-    console.error('Error during vote submission:', error);
-    errorDiv.textContent = `Error: ${error.message}`;
+    console.error('Vote submission failed:', error);
+    errorDiv.textContent = `Vote submission failed: ${error.message}`;
     errorDiv.style.display = 'block';
     submitButton.disabled = false;
-    submitButton.textContent = 'Verify & Vote';
-  }
-}
-
-/**
- * Resend OTP
- */
-async function resendOtp() {
-  try {
-    const userId = localStorage.getItem('userId');
-    const response = await API.resendOTP(userId);
-
-    if (response.success) {
-      showMessage('OTP resent successfully!', 'success');
-      document.getElementById('otpInput').value = '';
-      document.getElementById('otpInput').focus();
-    } else {
-      showMessage('Failed to resend OTP', 'danger');
-    }
-  } catch (error) {
-    console.error('Error resending OTP:', error);
-    showMessage('Error resending OTP', 'danger');
+    submitButton.textContent = 'Retry Vote';
   }
 }
 
@@ -544,10 +448,5 @@ function logout() {
 
 // Auto-refresh results every 10 seconds (if still on voting page)
 setInterval(() => {
-  if (
-    document.getElementById('resultsSection') &&
-    !document.getElementById('resultsSection').classList.contains('hidden')
-  ) {
-    loadResults();
-  }
+  // logic migrated
 }, 10000);

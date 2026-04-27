@@ -25,6 +25,13 @@ const userSchema = new mongoose.Schema(
       minlength: 3,
     },
 
+    // Phone number for MSG91 OTP
+    phoneNumber: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
     // Password hashed using bcrypt
     // Raw passwords are NEVER stored
     // Optional: Not required for Aadhaar+PAN based login
@@ -68,6 +75,12 @@ const userSchema = new mongoose.Schema(
     isOtpVerified: {
       type: Boolean,
       default: false,
+    },
+
+    // WebAuthn Passkeys Biometric Credential ID
+    biometricCredentialId: {
+      type: String,
+      default: null,
     },
 
     // Account creation timestamp

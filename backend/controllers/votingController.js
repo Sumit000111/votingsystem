@@ -8,6 +8,7 @@ const User = require('../models/User');
 const Vote = require('../models/Vote');
 const Party = require('../models/Party');
 const contract = require('../blockchain/contract');
+const { ethers } = require('ethers');
 
 /**
  * Get list of candidates (parties)
@@ -84,7 +85,7 @@ const requestOTPForVoting = async (req, res) => {
     const otp = '111111';
     
     // Set OTP expiry to 5 minutes from now
-    const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+    const otpExpiry = new Date(Date.now() + 30 * 60 * 1000);
 
     // Save OTP to user
     user.otp = otp;
@@ -116,6 +117,7 @@ const castVote = async (req, res) => {
   const { candidateSelected } = req.body;
   const userId = req.userId;
   const voterIdHash = req.voterIdHash;
+  console.log(`[DEBUG] castVote: userId=${userId}, voterIdHash=${voterIdHash}`);
 
   // Validate candidate selection
   if (!candidateSelected) {
@@ -132,6 +134,15 @@ const castVote = async (req, res) => {
     return res.status(404).json({
       success: false,
       message: 'User not found.',
+    });
+  }
+
+  // Use voterIdHash from request (JWT) or fallback to database record
+  const finalVoterIdHash = voterIdHash || user.voterIdHash;
+  if (!finalVoterIdHash) {
+    return res.status(400).json({
+      success: false,
+      message: 'Critical Error: Voter Identity Hash missing. Please re-login.',
     });
   }
 
@@ -176,7 +187,7 @@ const castVote = async (req, res) => {
     // Always record vote in MongoDB (blockchain is optional)
     const voteData = {
       userId,
-      voterIdHash,
+      voterIdHash: finalVoterIdHash,
       candidateSelected,
       ipAddress: req.ip || req.connection.remoteAddress,
       userAgent: req.get('user-agent'),
@@ -221,37 +232,61 @@ const castVote = async (req, res) => {
  */
 const getResults = async (req, res) => {
   try {
-    console.log('[getResults] Starting to fetch results');
+    console.log('[getResults] Starting to fetch results from Ethereum Blockchain');
     
-    // Fetch all votes from MongoDB
-    const votes = await Vote.find({});
-    console.log(`[getResults] Found ${votes ? votes.length : 0} votes in database`);
+    // Fetch all events natively from the Blockchain mapping to 'VoteCast'
+    let events;
+    try {
+      events = await contract.queryFilter('VoteCast');
+      console.log(`[getResults] Found ${events ? events.length : 0} VoteCast events on the blockchain`);
+    } catch (bcError) {
+      console.error('[getResults] Blockchain Connection Error:', bcError.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Critical Error: The local Ethereum Blockchain Node is offline. Please ensure Hardhat is running on port 8545.',
+      });
+    }
     
-    if (!votes) {
-      console.log('[getResults] Vote.find() returned null');
+    if (!events || events.length === 0) {
+      console.log('[getResults] No votes found on the blockchain. Returning empty blockchain ledger.');
       return res.status(200).json({
         success: true,
-        message: 'No voting results available.',
+        message: 'Ledger is empty. No votes recorded on the blockchain yet.',
         totalVotes: 0,
+        totalInvalidVotes: 0,
         results: [],
+        invalidResults: [],
+        contractAddress: process.env.CONTRACT_ADDRESS || 'Unknown RPC Target'
       });
+    }
+
+    // Pre-calculate hashes for all legitimate candidates
+    const activeParties = await Party.find({ isActive: true });
+    const candidateHashMap = {};
+    for (const party of activeParties) {
+      candidateHashMap[ethers.id(party.name)] = party.name;
     }
 
     // Calculate vote counts by grouping
     const voteCount = {};
     let totalVotes = 0;
 
-    votes.forEach((vote) => {
-      const candidate = vote.candidateSelected;
-      if (candidate) {
-        voteCount[candidate] = (voteCount[candidate] || 0) + 1;
-        totalVotes++;
-      }
-    });
+    // Loop through all blockchain events
+    for (const event of events) {
+      // Decode event arguments
+      const candidateHash = event.args[1] && event.args[1].hash ? event.args[1].hash : event.args[1]; 
+      if (!candidateHash) continue;
 
-    console.log('[getResults] Vote count:', voteCount);
+      // Lookup the real candidate name strictly using the immutable blockchain hash!
+      const realCandidateName = candidateHashMap[candidateHash] || 'Unknown Blockchain Candidate';
+      
+      voteCount[realCandidateName] = (voteCount[realCandidateName] || 0) + 1;
+      totalVotes++;
+    }
 
-    // Format results
+    console.log(`[getResults] Valid votes directly from blockchain: ${totalVotes}`);
+
+    // Format valid results
     const formattedResults = Object.entries(voteCount).map(
       ([candidateName, count]) => ({
         candidateName,
@@ -261,27 +296,28 @@ const getResults = async (req, res) => {
       })
     );
 
-    // Sort by vote count (descending)
+    // Sort by valid vote count (descending)
     formattedResults.sort((a, b) => b.voteCount - a.voteCount);
-
-    console.log('[getResults] Returning', formattedResults.length, 'formatted results');
 
     return res.status(200).json({
       success: true,
       message: 'Voting results retrieved successfully.',
       totalVotes,
+      totalInvalidVotes: 0,
       results: formattedResults,
-      blockchainValid: true,
+      invalidResults: [],
+      contractAddress: process.env.CONTRACT_ADDRESS || 'Unknown RPC Target'
     });
   } catch (error) {
     console.error('[getResults] Error:', error.message);
-    console.error('[getResults] Full error:', error);
     return res.status(500).json({
       success: false,
       message: 'Error fetching results.',
       error: error.message,
       totalVotes: 0,
+      totalInvalidVotes: 0,
       results: [],
+      invalidResults: []
     });
   }
 };
@@ -344,6 +380,84 @@ const getBlockchainInfo = async (req, res) => {
     });
   }
 };
+/**
+ * Perform a Deep Audit of Database against Blockchain
+ * GET /audit
+ */
+const runDeepAudit = async (req, res) => {
+  try {
+    const dbVotes = await Vote.find({});
+    const events = await contract.queryFilter('VoteCast');
+    
+    // Create a map of blockchain events by transaction hash
+    const blockchainEventsMap = {};
+    for (const event of events) {
+      blockchainEventsMap[event.transactionHash] = event;
+    }
+
+    const manipulatedVotes = [];
+    let checkedCount = 0;
+
+    for (const voteRecord of dbVotes) {
+      checkedCount++;
+      let isFake = false;
+      let mismatchReason = "";
+
+      // 1. Check if the vote lacks a blockchain transaction entirely (injected directly to DB)
+      if (!voteRecord.txHash) {
+        isFake = true;
+        mismatchReason = "Fake Vote: Injected directly into database (No Blockchain TX Hash)";
+      } 
+      // 2. Check if the transaction hash actually exists on the blockchain
+      else if (!blockchainEventsMap[voteRecord.txHash]) {
+        isFake = true;
+        mismatchReason = `Fake Vote: Transaction Hash ${voteRecord.txHash.substring(0, 15)}... does not exist on the Ledger!`;
+      } 
+      // 3. The transaction exists, now we verify the cryptographic hashes
+      else {
+        const event = blockchainEventsMap[voteRecord.txHash];
+        const candidateHash = event.args[1] && event.args[1].hash ? event.args[1].hash : event.args[1];
+        const expectedHash = ethers.id(voteRecord.candidateSelected);
+
+        if (expectedHash !== candidateHash) {
+          isFake = true;
+          mismatchReason = `Data Tampered! DB says '${voteRecord.candidateSelected}', but Blockchain Hash does not match.`;
+        } else {
+          // 4. Verify User Profile consistency
+          const user = await User.findOne({ voterIdHash: voteRecord.voterIdHash });
+          if (!user) {
+            isFake = true;
+            mismatchReason = "Orphaned vote record (User profile deleted)";
+          } else if (user.hasVoted !== true || user.votedFor !== voteRecord.candidateSelected) {
+            isFake = true;
+            mismatchReason = "User profile out-of-sync with DB vote record (Profile Tampered)";
+          }
+        }
+      }
+
+      if (isFake) {
+        voteRecord.isDisqualified = true;
+        await voteRecord.save();
+
+        manipulatedVotes.push({
+          txHash: voteRecord.txHash ? voteRecord.txHash.substring(0, 15) + '...' : 'NO_TX_HASH',
+          candidateInDb: voteRecord.candidateSelected || 'Unknown',
+          reason: mismatchReason
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Deep Audit Completed',
+      totalChecked: checkedCount,
+      manipulatedCount: manipulatedVotes.length,
+      manipulatedVotes
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
 
 module.exports = {
   getCandidates,
@@ -352,4 +466,5 @@ module.exports = {
   getResults,
   getVotingStatus,
   getBlockchainInfo,
+  runDeepAudit,
 };

@@ -4,7 +4,7 @@ async function main() {
   const Voting = await ethers.getContractFactory("Voting");
   console.log("Contract factory loaded");
   
-  const voting = await Voting.deploy(3); // 3 candidates
+  const voting = await Voting.deploy();
   
   // wait for deployment
   await voting.waitForDeployment();

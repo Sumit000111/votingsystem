@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Access - Secure Voting System</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <div class="navbar container">
+      <div class="logo">
+        <div class="flag-colors">
+          <span class="saffron">🇮🇳</span>
+          <span class="logo-text">System Administrator</span>
+        </div>
+      </div>
+      <nav>
+        <a href="index.html">Back to Home</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="auth-container" style="max-width: 500px; margin-top: 100px;">
+    
+    <div id="messageBox" class="hidden"></div>
+    
+    <!-- Step 1: Request OTP -->
+    <div class="tab-content active" id="loginStep" style="display: block;">
+      <h1 style="color: #d32f2f;">Level-4 Clearance</h1>
+      <p style="margin-bottom: 30px; color: #666; text-align: center; font-size: 15px">
+        Provide authorized Mobile Number for verification.
+      </p>
+
+      <form id="adminLoginForm">
+        <div class="form-group">
+          <label for="adminPhone">Admin Phone Number <span style="color: red">*</span></label>
+          <input type="tel" id="adminPhone" placeholder="Enter assigned 10-digit number" maxlength="10" required />
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block" style="background-color: #d32f2f; padding: 14px" id="sendBtn">
+          Request Admin OTP
+        </button>
+      </form>
+    </div>
+
+    <!-- Step 2: Verify OTP -->
+    <div class="tab-content hidden" id="otpStep" style="display: none;">
+      <h1 style="color: #d32f2f;">Verify Identity</h1>
+      <p style="margin-bottom: 30px; color: #666; text-align: center; font-size: 15px">
+        Enter the 6-digit access code sent to your mobile
+      </p>
+
+      <form id="adminOtpForm">
+        <div class="form-group">
+          <label for="adminOtp">Access OTP <span style="color: red">*</span></label>
+          <input type="text" id="adminOtp" placeholder="6-digit OTP" maxlength="6" required style="font-size: 24px; letter-spacing: 5px; text-align: center; padding: 15px;" />
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block" style="background-color: #d32f2f; padding: 14px" id="verifyBtn">
+          Login to Dashboard
+        </button>
+
+        <div style="margin-top: 15px; text-align: center; font-size: 14px;">
+          <a href="#" id="resendAdminOtpBtn" style="color: #666; text-decoration: underline;">Didn't receive OTP? Resend</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script>
+    document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const phone = document.getElementById('adminPhone').value;
+      const btn = document.getElementById('sendBtn');
+      btn.disabled = true;
+      btn.textContent = 'Authenticating...';
+
+      try {
+        const res = await API.adminLogin(phone);
+        if(res.success) {
+          localStorage.setItem('adminUserId', res.userId);
+          document.getElementById('loginStep').style.display = 'none';
+          document.getElementById('loginStep').classList.add('hidden');
+          document.getElementById('otpStep').style.display = 'block';
+          document.getElementById('otpStep').classList.remove('hidden');
+          document.getElementById('otpStep').classList.add('active');
+          showMessage(`${res.otp} is your verification code for voting sys`, "success");
+        } else {
+          showMessage(res.message, "danger");
+          btn.disabled = false;
+          btn.textContent = 'Request Admin OTP';
+        }
+      } catch(err) {
+        showMessage('Failed to communicate with SMS provider', "danger");
+        btn.disabled = false;
+        btn.textContent = 'Request Admin OTP';
+      }
+    });
+
+    document.getElementById('adminOtpForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const otp = document.getElementById('adminOtp').value;
+      const userId = localStorage.getItem('adminUserId');
+      const btn = document.getElementById('verifyBtn');
+      btn.disabled = true;
+      btn.textContent = 'Verifying...';
+
+      try {
+        const res = await API.adminVerifyOTP(userId, otp);
+        if(res.success) {
+          // Store token explicitly as admin token to distinguish
+          localStorage.setItem('adminToken', res.token);
+          window.location.href = 'results.html';
+        } else {
+          showMessage(res.message, "danger");
+          btn.disabled = false;
+          btn.textContent = 'Login to Dashboard';
+        }
+      } catch(err) {
+        showMessage('Failed to align verification key', "danger");
+        btn.disabled = false;
+        btn.textContent = 'Login to Dashboard';
+      }
+    });
+
+    document.getElementById('resendAdminOtpBtn').addEventListener('click', async (e) => {
+      e.preventDefault();
+      const phone = document.getElementById('adminPhone').value;
+      if (!phone) {
+          showMessage("Error: Origin mobile number empty.", "danger");
+          return;
+      }
+      
+      const link = document.getElementById('resendAdminOtpBtn');
+      link.textContent = "Requesting new code...";
+      link.style.pointerEvents = "none";
+
+      try {
+        const res = await API.adminLogin(phone);
+        if(res.success) {
+          showMessage(`${res.otp} is your verification code for voting sys`, "success");
+        } else {
+          showMessage(res.message, "danger");
+        }
+      } catch(err) {
+        showMessage('Network Error: Failed to hit SMS endpoint', "danger");
+      } finally {
+        setTimeout(() => {
+          link.textContent = "Didn't receive OTP? Resend";
+          link.style.pointerEvents = "auto";
+        }, 3000);
+      }
+    });
+
+    function showMessage(msg, type) {
+       const box = document.getElementById('messageBox');
+       box.innerHTML = `<div class="alert alert-${type}">${msg}</div>`;
+       box.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>

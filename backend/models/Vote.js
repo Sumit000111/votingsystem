@@ -52,6 +52,12 @@ const voteSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+
+    // Permanent flag for tampered votes detected during audit
+    isDisqualified: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

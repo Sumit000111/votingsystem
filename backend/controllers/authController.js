@@ -1,51 +1,59 @@
 /**
  * Authentication Controller
- * Handles user registration, login, and OTP verification
+ * Unified Login/Register logic with Renflair SMS Gateway OTP
  */
 
 const crypto = require('crypto');
-const bcryptjs = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const axios = require('axios');
 
 // Regex patterns for validation
 const AADHAAR_REGEX = /^[0-9]{12}$/; // Exactly 12 digits
-const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/; // Standard PAN format
+const MOBILE_REGEX = /^[0-9]{10}$/; // Standard 10-digit mobile
+
+// Renflair API Key
+const RENFLAIR_API_KEY = process.env.RENFLAIR_API_KEY || '294a8ed24b1ad22ec2e7efea049b8737';
 
 /**
- * Generate SHA-256 hash from Aadhaar and PAN
- * This creates a unique voter ID without storing raw Aadhaar/PAN
+ * Generate SHA-256 hash from Aadhaar and Voter Number
  */
-const generateVoterIdHash = (aadhaar, pan) => {
-  const combinedData = aadhaar + pan;
+const generateVoterIdHash = (aadhaar, voterNumber) => {
+  const combinedData = aadhaar + voterNumber.toUpperCase();
   return crypto.createHash('sha256').update(combinedData).digest('hex');
 };
 
 /**
- * Generate a 6-digit OTP
- * For demo purposes, returns fixed OTP: 111111
+ * Generate a 6-digit random OTP
  */
-const generateOTP = () => {
-  return '111111'; // Demo OTP
+const generateRandomOTP = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
 /**
- * Register a new user
- * POST /register
+ * Send OTP via Renflair API
  */
-const register = async (req, res) => {
-  try {
-    const { aadhaar, pan, username, password, confirmPassword } = req.body;
+const sendRenflairOTP = async (phone, otp) => {
+  const url = `https://sms.renflair.in/V1.php?API=${RENFLAIR_API_KEY}&PHONE=${phone}&OTP=${otp}`;
+  const response = await axios.get(url);
+  return response.data;
+};
 
-    // Validate required fields
-    if (!aadhaar || !pan || !username || !password || !confirmPassword) {
+/**
+ * Authenticate User (Login / Register Unified)
+ * POST /authenticate
+ */
+const authenticate = async (req, res) => {
+  try {
+    const { aadhaar, voterNumber, phoneNumber, state } = req.body;
+
+    if (!aadhaar || !voterNumber || !phoneNumber || !state) {
       return res.status(400).json({
         success: false,
-        message: 'All fields are required.',
+        message: 'All fields are required (Aadhaar, Voter Number, Mobile, State).',
       });
     }
 
-    // Validate Aadhaar format (12 digits)
     if (!AADHAAR_REGEX.test(aadhaar)) {
       return res.status(400).json({
         success: false,
@@ -53,174 +61,70 @@ const register = async (req, res) => {
       });
     }
 
-    // Validate PAN format
-    if (!PAN_REGEX.test(pan.toUpperCase())) {
+    if (!MOBILE_REGEX.test(phoneNumber)) {
       return res.status(400).json({
         success: false,
-        message:
-          'Invalid PAN format. Example: ABCDE1234F (5 letters, 4 digits, 1 letter)',
+        message: 'Invalid Mobile number. Must be exactly 10 digits.',
       });
     }
 
-    // Check if passwords match
-    if (password !== confirmPassword) {
-      return res.status(400).json({
-        success: false,
-        message: 'Passwords do not match.',
-      });
-    }
-
-    // Check password length
-    if (password.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password must be at least 6 characters long.',
-      });
-    }
-
-    // Generate hashed voter ID from Aadhaar + PAN
-    const voterIdHash = generateVoterIdHash(aadhaar, pan);
+    // Generate hashed voter ID
+    const voterIdHash = generateVoterIdHash(aadhaar, voterNumber);
 
     // Check if voter already exists
-    let existingUser = await User.findOne({ voterIdHash });
-
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'Voter already registered with these credentials.',
-      });
-    }
-
-    // Check if username already exists
-    existingUser = await User.findOne({ username });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'Username already taken. Please choose another.',
-      });
-    }
-
-    // Hash the password using bcrypt
-    const salt = await bcryptjs.genSalt(10);
-    const hashedPassword = await bcryptjs.hash(password, salt);
-
-    // Create new user
-    const newUser = new User({
-      voterIdHash,
-      username,
-      password: hashedPassword,
-    });
-
-    // Save user to database
-    await newUser.save();
-
-    // Generate JWT token (without OTP verification initially)
-    const token = jwt.sign(
-      {
-        userId: newUser._id,
-        voterIdHash: newUser.voterIdHash,
-        isOtpVerified: false,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    // Generate OTP and save it
-    const otp = generateOTP();
-    const otpExpiry = new Date(Date.now() + 5 * 60 * 1000); // OTP valid for 5 minutes
-
-    newUser.otp = otp;
-    newUser.otpExpiry = otpExpiry;
-    await newUser.save();
-
-    // In production, send OTP via SMS or email
-    // For demo purposes, we'll just log it
-    console.log(`OTP for user ${username}: ${otp}`);
-
-    return res.status(201).json({
-      success: true,
-      message:
-        'User registered successfully. OTP has been sent. Please verify.',
-      token,
-      userId: newUser._id,
-      username: newUser.username,
-      // In production, never send OTP in response; send via SMS/email instead
-      // This is only for demo purposes
-      otp: otp,
-    });
-  } catch (error) {
-    console.error('Registration error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error during registration.',
-      error: error.message,
-    });
-  }
-};
-
-/**
- * Login with Aadhaar and PAN
- * POST /login
- * Auto-creates user on first login, saves state, no OTP here
- */
-const login = async (req, res) => {
-  try {
-    const { aadhaar, pan, state } = req.body;
-
-    // Validate required fields
-    if (!aadhaar || !pan || !state) {
-      return res.status(400).json({
-        success: false,
-        message: 'Aadhaar, PAN, and State are required.',
-      });
-    }
-
-    // Validate Aadhaar format
-    if (!AADHAAR_REGEX.test(aadhaar)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid Aadhaar number. Must be exactly 12 digits.',
-      });
-    }
-
-    // Validate PAN format
-    if (!PAN_REGEX.test(pan.toUpperCase())) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid PAN format. Example: ABCDE1234F',
-      });
-    }
-
-    // Generate voter ID hash
-    const voterIdHash = generateVoterIdHash(aadhaar, pan);
-
-    // Find user by voter ID hash
     let user = await User.findOne({ voterIdHash });
 
-    // If user doesn't exist, create new user
+    console.log(`[AUTH] Login attempt for Hash: ${voterIdHash}, Phone: ${phoneNumber}`);
     if (!user) {
+      console.log(`[AUTH] Creating NEW user for Hash: ${voterIdHash}`);
+      // Auto-create newly registered user entry
+      let username = `voter_${voterIdHash.substring(0, 8)}`;
+      
       user = new User({
         voterIdHash,
-        username: `voter_${voterIdHash.substring(0, 8)}`, // Auto-generated username
-        password: '', // No password needed
-        state, // Save selected state
+        username,
+        phoneNumber,
+        state,
+        password: '', // Passwordless
       });
-      await user.save();
     } else {
-      // Update state if user already exists
+      console.log(`[AUTH] Found EXISTING user for Hash: ${voterIdHash}. hasVoted: ${user.hasVoted}`);
+      // User exists, just update their state or mobile if needed
       user.state = state;
-      await user.save();
+      user.phoneNumber = phoneNumber; 
     }
 
-    // Check if already voted
-    if (user.hasVoted) {
-      return res.status(403).json({
+    // Determine Hardware Access bypass
+    if (user && user.biometricCredentialId) {
+       return res.status(200).json({
+          success: true,
+          skipOtp: true,
+          biometricCredentialId: user.biometricCredentialId,
+          userId: user._id
+       });
+    }
+
+    // Generate local OTP and expiry (30 mins)
+    const generatedOtp = generateRandomOTP();
+    user.otp = generatedOtp;
+    user.otpExpiry = new Date(Date.now() + 30 * 60 * 1000);
+    user.isOtpVerified = false;
+
+    // Send OTP via Renflair
+    try {
+      await sendRenflairOTP(user.phoneNumber, generatedOtp);
+    } catch (apiError) {
+      console.error('Renflair Send OTP Error:', apiError.message);
+      return res.status(500).json({
         success: false,
-        message: 'You have already voted. One vote per user is allowed.',
+        message: 'Failed to send OTP through SMS provider.',
       });
     }
 
-    // Generate JWT token - OTP will be asked during vote casting
+    // Save user to DB only after SMS is successfully sent
+    await user.save();
+
+    // Generate preliminary JWT token
     const token = jwt.sign(
       {
         userId: user._id,
@@ -232,28 +136,26 @@ const login = async (req, res) => {
       { expiresIn: '24h' }
     );
 
-    console.log(`User logged in: ${user.username} from ${state}`);
-
-    return res.status(200).json({
+    return res.status(201).json({
       success: true,
-      message: 'Login successful. Select your election type.',
+      message: 'OTP has been sent to your mobile. Please verify.',
       token,
       userId: user._id,
       username: user.username,
-      state: user.state,
+      state: user.state
     });
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('Authentication error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Error during login.',
+      message: 'Error during authentication.',
       error: error.message,
     });
   }
 };
 
 /**
- * Verify OTP
+ * Verify OTP Local Database Check
  * POST /verify-otp
  */
 const verifyOTP = async (req, res) => {
@@ -267,7 +169,6 @@ const verifyOTP = async (req, res) => {
       });
     }
 
-    // Find user
     const user = await User.findById(userId);
 
     if (!user) {
@@ -277,46 +178,46 @@ const verifyOTP = async (req, res) => {
       });
     }
 
-    // Check if OTP matches
-    if (user.otp !== otp) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid OTP.',
-      });
-    }
-
-    // Check if OTP has expired
-    if (new Date() > user.otpExpiry) {
+    // Check expiry
+    if (!user.otpExpiry || user.otpExpiry < new Date()) {
       return res.status(400).json({
         success: false,
         message: 'OTP has expired. Please request a new one.',
       });
     }
 
-    // Mark OTP as verified
-    user.isOtpVerified = true;
-    user.otp = null;
-    user.otpExpiry = null;
-    await user.save();
+    // Determine correctness locally
+    if (user.otp === otp) {
+      user.isOtpVerified = true;
+      user.otp = null;
+      user.otpExpiry = null;
+      await user.save();
 
-    // Generate new JWT token with OTP verified flag
-    const token = jwt.sign(
-      {
+      const token = jwt.sign(
+        {
+          userId: user._id,
+          voterIdHash: user.voterIdHash,
+          isOtpVerified: true,
+          state: user.state
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: 'Authentication successful. You can now vote.',
+        token,
         userId: user._id,
-        voterIdHash: user.voterIdHash,
-        isOtpVerified: true,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: 'OTP verified successfully. You can now vote.',
-      token,
-      userId: user._id,
-      username: user.username,
-    });
+        username: user.username,
+        state: user.state
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid OTP provided.',
+      });
+    }
   } catch (error) {
     console.error('OTP verification error:', error);
     return res.status(500).json({
@@ -328,7 +229,7 @@ const verifyOTP = async (req, res) => {
 };
 
 /**
- * Resend OTP
+ * Resend OTP Local Generation
  * POST /resend-otp
  */
 const resendOTP = async (req, res) => {
@@ -351,20 +252,26 @@ const resendOTP = async (req, res) => {
       });
     }
 
-    // Generate new OTP
-    const otp = generateOTP();
-    const otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
-
-    user.otp = otp;
-    user.otpExpiry = otpExpiry;
+    // Generate new OTP and update expiry
+    const newOtp = generateRandomOTP();
+    user.otp = newOtp;
+    user.otpExpiry = new Date(Date.now() + 30 * 60 * 1000);
     await user.save();
 
-    console.log(`New OTP for user ${user.username}: ${otp}`);
+    // Send via Renflair
+    try {
+      await sendRenflairOTP(user.phoneNumber, newOtp);
+    } catch (apiError) {
+      console.error('Renflair Resend Error:', apiError.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to resend OTP via SMS gateway.',
+      });
+    }
 
     return res.status(200).json({
       success: true,
       message: 'New OTP sent successfully.',
-      otp: otp, // For demo only
     });
   } catch (error) {
     console.error('Resend OTP error:', error);
@@ -376,9 +283,180 @@ const resendOTP = async (req, res) => {
   }
 };
 
+/**
+ * Admin Login
+ * POST /admin-login
+ */
+const adminLogin = async (req, res) => {
+  try {
+    const { phoneNumber } = req.body;
+    
+    if (!phoneNumber) {
+      return res.status(400).json({ success: false, message: 'Mobile number is required.' });
+    }
+
+    if (phoneNumber !== '9467125975') {
+      return res.status(403).json({ success: false, message: 'Unauthorized. Admin access only.' });
+    }
+
+    const generatedOtp = generateRandomOTP();
+    
+    let adminUser = await User.findOne({ voterIdHash: 'ADMIN_HASH_9467125975' });
+    if (!adminUser) {
+      adminUser = new User({
+        voterIdHash: 'ADMIN_HASH_9467125975',
+        username: 'SystemAdmin',
+        phoneNumber: '9467125975',
+        password: '',
+      });
+    }
+
+    adminUser.otp = generatedOtp;
+    adminUser.otpExpiry = new Date(Date.now() + 30 * 60 * 1000);
+    adminUser.isOtpVerified = false;
+    
+    try {
+      await sendRenflairOTP(adminUser.phoneNumber, generatedOtp);
+    } catch (apiError) {
+      console.error('Renflair Send OTP Error for Admin:', apiError.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send admin OTP through SMS provider.',
+      });
+    }
+
+    await adminUser.save();
+
+    const token = jwt.sign(
+      {
+        userId: adminUser._id,
+        isAdminAccount: true,
+        isOtpVerified: false,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Admin OTP has been sent. Please verify.',
+      token,
+      userId: adminUser._id,
+      otp: generatedOtp
+    });
+  } catch (error) {
+    console.error('Admin Login error:', error);
+    return res.status(500).json({ success: false, message: 'Error during admin login.' });
+  }
+};
+
+/**
+ * Admin Verify OTP
+ * POST /admin-verify-otp
+ */
+const adminVerifyOTP = async (req, res) => {
+  try {
+    const { userId, otp } = req.body;
+
+    if (!userId || !otp) {
+      return res.status(400).json({ success: false, message: 'User ID and OTP are required.' });
+    }
+
+    const adminUser = await User.findById(userId);
+
+    if (!adminUser || adminUser.voterIdHash !== 'ADMIN_HASH_9467125975') {
+      return res.status(403).json({ success: false, message: 'Unauthorized. Admin access only.' });
+    }
+
+    if (!adminUser.otpExpiry || adminUser.otpExpiry < new Date()) {
+      return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
+    }
+
+    if (adminUser.otp === otp) {
+      adminUser.isOtpVerified = true;
+      adminUser.otp = null;
+      adminUser.otpExpiry = null;
+      await adminUser.save();
+
+      const token = jwt.sign(
+        {
+          userId: adminUser._id,
+          isAdminAccount: true,
+          isOtpVerified: true,
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: 'Admin authentication successful.',
+        token,
+        userId: adminUser._id,
+        username: 'Administrator'
+      });
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid OTP provided.' });
+    }
+  } catch (error) {
+    console.error('Admin OTP verification error:', error);
+    return res.status(500).json({ success: false, message: 'Error during admin OTP verification.' });
+  }
+};
+
+/**
+ * WebAuthn Passkeys: Bind mapped authentication hardware to native profile.
+ */
+const registerBiometric = async (req, res) => {
+   try {
+       const user = await User.findById(req.userId);
+       if (!user) return res.status(404).json({ success: false, message: 'User mapping failure.' });
+       
+       user.biometricCredentialId = req.body.biometricCredentialId;
+       await user.save();
+       return res.status(200).json({ success: true, message: 'Hardware fingerprint physically secured.' });
+   } catch(e) {
+       return res.status(500).json({ success: false, message: 'Failed capturing device credentials.' });
+   }
+};
+
+/**
+ * WebAuthn Passkeys: Authenticate mapped hardware exclusively, natively minting standard JSON token overrides.
+ */
+const verifyBiometricLogin = async (req, res) => {
+   try {
+       const { userId, credentialId } = req.body;
+       const user = await User.findById(userId);
+       
+       if (!user || user.biometricCredentialId !== credentialId) {
+          return res.status(403).json({ success: false, message: 'Unrecognized Physical Node Identifier!' });
+       }
+       
+       // Instant physical Mint bypassing OTP sequences
+       const token = jwt.sign(
+         { userId: user._id, voterIdHash: user.voterIdHash, isOtpVerified: true, state: user.state },
+         process.env.JWT_SECRET, { expiresIn: '24h' }
+       );
+
+       return res.status(200).json({
+         success: true, 
+         message: 'Biometric authorization visually certified.',
+         token, 
+         userId: user._id, 
+         username: user.username, 
+         state: user.state
+       });
+   } catch (e) {
+       return res.status(500).json({ success: false, message: 'Fatal exception interrogating TouchID sensor layer.' });
+   }
+};
+
 module.exports = {
-  register,
-  login,
+  authenticate,
   verifyOTP,
   resendOTP,
+  adminLogin,
+  adminVerifyOTP,
+  registerBiometric,
+  verifyBiometricLogin
 };

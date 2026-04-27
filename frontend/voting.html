@@ -89,79 +89,52 @@
       </button>
     </div>
 
-    <!-- Results Section -->
-    <div id="resultsSection">
-      <h2>Live Voting Results</h2>
-      <div id="resultsContainer" style="margin-top: 20px"></div>
-
-      <!-- Blockchain Info -->
-      <div id="blockchainInfoBox"></div>
-
-      <button
-        type="button"
-        class="btn btn-primary"
-        onclick="location.reload()"
-        style="margin-top: 20px"
-      >
-        Refresh Results
-      </button>
-    </div>
+    <!-- Voting functionality locked -->
   </div>
 
   <!-- Scripts -->
   <script src="js/api.js"></script>
   <script src="js/voting.js"></script>
 
-  <!-- OTP Modal -->
-  <div id="otpModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); z-index: 1000; justify-content: center; align-items: center;">
-    <div style="background: white; border-radius: 8px; padding: 30px; max-width: 400px; width: 90%; box-shadow: 0 20px 25px rgba(0, 0, 0, 0.2);">
-      <h2 style="margin-top: 0; color: #1f2937">Verify Your Vote</h2>
-      <p style="color: #6b7280; margin-bottom: 20px">
-        Enter the 6-digit OTP sent to verify your vote for <strong id="otpCandidateName"></strong>
+  <!-- Secure Biometric Modal -->
+  <div id="otpModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.7); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
+    <div style="background: var(--dark-bg); border: 1px solid rgba(255,140,0,0.3); border-radius: 16px; padding: 40px; max-width: 450px; width: 90%; box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255,255,255,0.1); text-align: center;">
+      <div style="font-size: 60px; margin-bottom: 20px; animation: pulse 2s infinite;">🔐</div>
+      <h2 style="margin-top: 0; color: #fff; margin-bottom: 15px">Verify Your Vote</h2>
+      <p style="color: #a0a5b0; margin-bottom: 30px; font-size: 15px; line-height: 1.5;">
+        You are casting a permanent vote for <strong id="otpCandidateName" style="color: #ff8c00;"></strong>.<br/><br/>
+        Please confirm this transaction to securely record your vote.
       </p>
       
-      <div style="margin-bottom: 20px">
-        <label style="display: block; margin-bottom: 8px; font-weight: 500; color: #1f2937">OTP Code</label>
-        <input
-          id="otpInput"
-          type="text"
-          maxlength="6"
-          placeholder="000000"
-          style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-size: 24px; text-align: center; letter-spacing: 5px; font-weight: bold"
-          onkeypress="handleOtpInput(event)"
-        />
-        <div id="otpError" style="color: #dc2626; margin-top: 8px; font-size: 14px; display: none;"></div>
-      </div>
+      <div id="otpError" class="alert alert-danger" style="display: none; margin-bottom: 20px;"></div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-        <button
-          type="button"
-          class="btn btn-outline"
-          onclick="closeOtpModal()"
-          style="padding: 10px; border: 1px solid #d1d5db; color: #374151; cursor: pointer; border-radius: 6px; font-weight: 500; background: white"
-        >
-          Cancel
-        </button>
+      <div style="display: grid; grid-template-columns: 1fr; gap: 15px;">
         <button
           id="otpSubmitButton"
           type="button"
           class="btn btn-success"
           onclick="submitOtpAndVote()"
-          style="padding: 10px; background: #16a34a; color: white; cursor: pointer; border-radius: 6px; font-weight: 500; border: none"
+          style="padding: 16px; font-size: 16px;"
         >
           Verify & Vote
         </button>
-      </div>
-
-      <div style="margin-top: 15px; text-align: center; font-size: 12px; color: #9ca3af">
         <button
           type="button"
-          style="background: none; border: none; color: #2563eb; cursor: pointer; text-decoration: underline; padding: 0"
-          onclick="resendOtp()"
+          class="btn"
+          onclick="closeOtpModal()"
+          style="padding: 16px; background: rgba(255,255,255,0.05) !important; color: white !important; font-size: 16px; border: 1px solid rgba(255,255,255,0.1) !important"
         >
-          Didn't receive code? Resend OTP
+          Cancel Transcription
         </button>
       </div>
+      
+      <style>
+        @keyframes pulse {
+          0% { text-shadow: 0 0 10px rgba(255, 140, 0, 0.2); transform: scale(1); }
+          50% { text-shadow: 0 0 30px rgba(255, 140, 0, 0.6); transform: scale(1.1); }
+          100% { text-shadow: 0 0 10px rgba(255, 140, 0, 0.2); transform: scale(1); }
+        }
+      </style>
     </div>
   </div>
 </body>

@@ -14,7 +14,8 @@ const contractAddress = process.env.CONTRACT_ADDRESS || "0xCf7Ed3AccA5a467e9e704
 // ABI (minimal - for vote function that accepts string)
 const abi = [
   "function vote(string memory candidate) returns (bool)",
-  "function getVotes(string memory candidate) view returns (uint)"
+  "function getVotes(string memory candidate) view returns (uint)",
+  "event VoteCast(address indexed voter, string indexed candidate, uint timestamp)"
 ];
 
 const contract = new ethers.Contract(contractAddress, abi, wallet);

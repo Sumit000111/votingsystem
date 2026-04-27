@@ -51,6 +51,7 @@ const getCandidatesByElectionType = async (req, res) => {
   try {
     const { type } = req.query;
     const userState = req.query.state || null;
+    console.log(`[DEBUG] getCandidatesByElectionType: type=${type}, state=${userState}`);
 
     let candidates;
 

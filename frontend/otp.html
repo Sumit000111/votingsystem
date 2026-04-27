@@ -48,7 +48,7 @@
           "
         />
         <small class="text-muted" style="display: block; text-align: center"
-          >OTP is valid for 5 minutes</small
+          >OTP is valid for 30 minutes</small
         >
       </div>
 
@@ -60,14 +60,13 @@
 
     <!-- Resend OTP -->
     <div style="text-align: center; margin-top: 20px">
-      <p style="margin-bottom: 10px">Didn't receive OTP?</p>
       <button
         type="button"
-        class="btn btn-secondary"
         onclick="resendOTP()"
         id="resendBtn"
+        style="background: none; border: none; color: #ff9933; text-decoration: underline; cursor: pointer; font-size: 15px; font-family: inherit; padding: 5px;"
       >
-        Resend OTP
+        Didn't receive OTP? Resend
       </button>
     </div>
 
@@ -83,18 +82,18 @@
   <script>
     // Check if user is authenticated
     window.addEventListener('load', function () {
-      const token = localStorage.getItem('authToken');
-      const userId = localStorage.getItem('userId');
-      const username = localStorage.getItem('username');
+      // Check for strictly the temporary identifiers saved during Phase 1
+      const tempUserId = localStorage.getItem('tempUserId');
+      const tempUsername = localStorage.getItem('tempUsername');
 
-      if (!token || !userId) {
+      if (!tempUserId) {
         // Redirect to login if not authenticated
         window.location.href = 'index.html';
         return;
       }
 
       // Display username
-      document.getElementById('userInfo').textContent = `Logged in as: ${username}`;
+      document.getElementById('userInfo').textContent = `Onboarding: ${tempUsername || 'Voter'}`;
     });
 
     // OTP Form Submission
@@ -102,7 +101,7 @@
       e.preventDefault();
 
       const otp = document.getElementById('otp').value.trim();
-      const userId = localStorage.getItem('userId');
+      const tempUserId = localStorage.getItem('tempUserId');
 
       if (otp.length !== 6) {
         showMessage('OTP must be 6 digits', 'danger');
@@ -110,12 +109,16 @@
       }
 
       try {
-        const response = await API.verifyOTP(userId, otp);
+        const response = await API.verifyOTP(tempUserId, otp);
 
         if (response.success) {
-          // Store new token with OTP verified flag
+          // Store actual minted token and user credentials confirming OTP validation
           localStorage.setItem('authToken', response.token);
-          showMessage('OTP verified successfully! Redirecting...', 'success');
+          localStorage.setItem('userId', response.userId);
+          localStorage.setItem('username', response.username);
+          localStorage.setItem('state', response.state);
+          
+          showMessage('Validation successful! Entering dashboard...', 'success');
 
           // Redirect to voting page
           setTimeout(() => {
@@ -131,7 +134,7 @@
 
     // Resend OTP
     async function resendOTP() {
-      const userId = localStorage.getItem('userId');
+      const tempUserId = localStorage.getItem('tempUserId');
       const resendBtn = document.getElementById('resendBtn');
 
       // Disable button temporarily
@@ -139,7 +142,7 @@
       resendBtn.textContent = 'Sending...';
 
       try {
-        const response = await API.resendOTP(userId);
+        const response = await API.resendOTP(tempUserId);
 
         if (response.success) {
           showMessage(
@@ -149,17 +152,17 @@
           // Re-enable button after 30 seconds
           setTimeout(() => {
             resendBtn.disabled = false;
-            resendBtn.textContent = 'Resend OTP';
+            resendBtn.textContent = 'Didn\'t receive OTP? Resend';
           }, 30000);
         } else {
           showMessage(response.message || 'Failed to resend OTP', 'danger');
           resendBtn.disabled = false;
-          resendBtn.textContent = 'Resend OTP';
+          resendBtn.textContent = 'Didn\'t receive OTP? Resend';
         }
       } catch (error) {
         showMessage('Error: ' + error.message, 'danger');
         resendBtn.disabled = false;
-        resendBtn.textContent = 'Resend OTP';
+        resendBtn.textContent = 'Didn\'t receive OTP? Resend';
       }
     }
 

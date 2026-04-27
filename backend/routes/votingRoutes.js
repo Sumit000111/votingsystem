@@ -5,7 +5,7 @@
 
 const express = require('express');
 const votingController = require('../controllers/votingController');
-const { verifyToken, verifyOTP } = require('../middleware/auth');
+const { verifyToken, verifyOTP, verifyAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -34,9 +34,9 @@ router.post('/vote', verifyOTP, votingController.castVote);
 /**
  * GET /results
  * Get voting results
- * Accessible to all (public results)
+ * Accessible to Admins only
  */
-router.get('/results', votingController.getResults);
+router.get('/results', verifyAdmin, votingController.getResults);
 
 /**
  * GET /voting-status
@@ -51,5 +51,11 @@ router.get('/voting-status', verifyToken, votingController.getVotingStatus);
  * For transparency and audit purposes
  */
 router.get('/blockchain-info', votingController.getBlockchainInfo);
+/**
+ * GET /audit
+ * Perform a Deep Blockchain-to-Database Audit to explicitly mark tampered votes
+ * Accessible to Admins only
+ */
+router.get('/audit', verifyAdmin, votingController.runDeepAudit);
 
 module.exports = router;

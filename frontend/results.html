@@ -3,85 +3,59 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Voting Results - Secure Voting System</title>
+  <title>Admin Dashboard - Secure Voting System</title>
   <link rel="stylesheet" href="css/styles.css" />
 </head>
-<body>
+<body style="background-color: #f9fafb;">
   <!-- Header -->
-  <header>
+  <header style="background: white; border-bottom: 1px solid #e5e7eb;">
     <div class="navbar container">
-      <div class="logo">🗳️ Secure Voting System</div>
+      <div class="logo">🗳️ Admin Dashboard</div>
       <nav>
-        <a href="index.html">Login</a>
-        <a href="results.html" style="color: #fff; opacity: 1">Results</a>
-        <span class="user-info" id="userInfo"></span>
-        <a href="#" id="logoutLink" class="hidden" onclick="logout(); return false"
-          >Logout</a
-        >
+        <span class="user-info" id="userInfo" style="color: #d32f2f; font-weight: bold; margin-right: 15px;">System Administrator</span>
+        <a href="#" id="logoutLink" onclick="logout(); return false" style="background: #f3f4f6; padding: 5px 12px; border-radius: 4px; color: #374151; font-size: 14px;">Logout</a>
       </nav>
     </div>
   </header>
 
   <!-- Main Container -->
-  <div class="dashboard-container">
+  <div class="container" style="max-width: 800px; margin: 40px auto; padding: 20px;">
     <!-- Message Area -->
     <div id="messageBox"></div>
 
-    <!-- Results Header -->
-    <h1>📊 Live Voting Results</h1>
-    <p style="color: #6b7280; margin-bottom: 30px">
-      Real-time voting statistics and blockchain verification
-    </p>
-
-    <!-- Statistics Cards -->
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-label">Total Votes Cast</div>
-        <div class="stat-value" id="totalVotes">0</div>
+    <div style="background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 40px; text-align: center;">
+      <h2 style="color: #111827; margin-bottom: 10px; font-size: 24px;">Administrative Voting Analysis</h2>
+      <p style="color: #6b7280; font-size: 15px; margin-bottom: 40px;">Trigger the secure protocol to aggregate votes directly from the system.</p>
+      
+      <!-- Action Buttons -->
+      <div style="display: flex; gap: 15px; justify-content: center;">
+        <button
+          type="button"
+          onclick="loadResults()"
+          style="background-color: #001F5C; padding: 18px 40px; font-size: 16px; border-radius: 8px; border: none; cursor: pointer; color: white; font-weight: bold; box-shadow: 0 4px 14px rgba(0, 31, 92, 0.4); transition: transform 0.1s ease;"
+          id="countBtn"
+          onmouseover="this.style.transform='translateY(-2px)';"
+          onmouseout="this.style.transform='translateY(0)';"
+        >
+          📊 Count Voting
+        </button>
+        
+        <button
+          type="button"
+          onclick="runAudit()"
+          style="background-color: #b91c1c; padding: 18px 40px; font-size: 16px; border-radius: 8px; border: none; cursor: pointer; color: white; font-weight: bold; box-shadow: 0 4px 14px rgba(185, 28, 28, 0.4); transition: transform 0.1s ease;"
+          id="auditBtn"
+          onmouseover="this.style.transform='translateY(-2px)';"
+          onmouseout="this.style.transform='translateY(0)';"
+        >
+          🔍 Perform Deep DB Audit
+        </button>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Voting Status</div>
-        <div class="stat-value" id="votingOpen" style="font-size: 18px">Open</div>
+
+      <!-- Results Display -->
+      <div id="resultsContainer" style="margin-top: 50px; text-align: left;">
+        <!-- Will remain empty until Count Voting is clicked -->
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Blockchain Status</div>
-        <div class="stat-value" id="blockchainStatus" style="font-size: 18px">
-          ✓ Valid
-        </div>
-      </div>
-    </div>
-
-    <!-- Results Display -->
-    <div style="margin-top: 40px">
-      <h2>Candidate Vote Count</h2>
-      <div id="resultsContainer" style="margin-top: 20px">
-        <div class="loading">
-          <div class="spinner"></div>
-          <p>Loading results...</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Blockchain Verification -->
-    <div id="blockchainInfoBox" style="margin-top: 50px"></div>
-
-    <!-- Voting Prompt for Non-Authenticated Users -->
-    <div id="votingPrompt" class="alert alert-info" style="margin-top: 30px">
-      <strong>Ready to Vote?</strong> If you haven't voted yet,
-      <a href="index.html">login or register here</a> to cast your vote securely.
-    </div>
-
-    <!-- Refresh Button -->
-    <div style="text-align: center; margin-top: 30px">
-      <button
-        type="button"
-        class="btn btn-primary"
-        onclick="loadResults()"
-        style="margin-right: 10px"
-      >
-        🔄 Refresh Results
-      </button>
-      <a href="index.html" class="btn btn-secondary">Back to Login</a>
     </div>
   </div>
 
@@ -90,167 +64,203 @@
   <script>
     // Initialize page
     window.addEventListener('load', function () {
-      const token = localStorage.getItem('authToken');
-      const username = localStorage.getItem('username');
+      const adminToken = localStorage.getItem('adminToken');
 
-      // Show logout link if user is authenticated
-      if (token && username) {
-        document.getElementById('userInfo').textContent = `Logged in as: ${username}`;
-        document.getElementById('logoutLink').classList.remove('hidden');
-        document.getElementById('votingPrompt').classList.add('hidden');
+      if (!adminToken) {
+        alert("Admin Access Denied: You must authenticate through the Admin Portal.");
+        window.location.href = 'admin.html';
       }
-
-      loadResults();
     });
 
-    // Load and display results
+    // Load and display results ONLY when button clicked
     async function loadResults() {
+      const container = document.getElementById('resultsContainer');
+      const btn = document.getElementById('countBtn');
+      
+      btn.textContent = "Processing...";
+      btn.style.pointerEvents = "none";
+      btn.style.opacity = "0.7";
+
+      container.innerHTML = `
+        <div style="text-align: center; color: #6b7280; font-size: 15px; padding: 20px;">
+          <div class="spinner" style="margin: 0 auto 15px auto;"></div>
+          Tallying active votes from the secure network...
+        </div>
+      `;
+
       try {
         const resultsResponse = await API.getResults();
-        const blockchainResponse = await API.getBlockchainInfo();
 
         if (resultsResponse.success) {
           displayResults(resultsResponse);
-        }
-
-        if (blockchainResponse.success) {
-          displayBlockchainInfo(blockchainResponse);
+        } else {
+          showMessage(resultsResponse.message || 'Failed to retrieve voting stats', 'danger');
+          container.innerHTML = '';
         }
       } catch (error) {
         console.error('Error loading results:', error);
-        showMessage(
-          'Error loading results: ' + error.message,
-          'danger'
-        );
+        showMessage('Error communicating with the server: ' + error.message, 'danger');
+        container.innerHTML = '';
+      } finally {
+        setTimeout(() => {
+          btn.textContent = "📊 Refresh Voting Count";
+          btn.style.pointerEvents = "auto";
+          btn.style.opacity = "1";
+        }, 500);
       }
     }
 
     // Display voting results
     function displayResults(data) {
-      const { totalVotes, results, blockchainValid } = data;
-
-      // Update statistics
-      document.getElementById('totalVotes').textContent = totalVotes;
-      document.getElementById('blockchainStatus').textContent = blockchainValid
-        ? '✓ Valid'
-        : '✗ Invalid';
-      document.getElementById('blockchainStatus').parentElement.parentElement.style.backgroundColor =
-        blockchainValid
-          ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)'
-          : 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)';
-
-      // Display candidate results
+      const { totalVotes, results, invalidResults = [], totalInvalidVotes = 0, contractAddress } = data;
       const container = document.getElementById('resultsContainer');
 
-      if (results.length === 0) {
+      if (results.length === 0 && invalidResults.length === 0) {
         container.innerHTML = `
-          <div class="alert alert-info">
-            <strong>No votes yet.</strong> Be the first to cast your vote!
+          <div style="text-align: center; border: 1px dashed #d1d5db; border-radius: 8px; padding: 40px; background: #f9fafb;">
+            <strong style="color: #374151; font-size: 16px;">System is empty.</strong><br>
+            <span style="color: #6b7280; font-size: 14px; margin-top: 5px; display: inline-block;">No votes have been recorded on the network yet.</span>
           </div>
         `;
         return;
       }
 
-      let maxVotes = Math.max(...results.map((r) => r.voteCount));
+      let maxVotes = Math.max(...results.map((r) => r.voteCount), 0);
 
-      container.innerHTML = results
+      let html = `
+        <div style="margin-bottom: 25px; text-align: left; background: #f8fafc; padding: 12px 20px; border-radius: 8px; border-left: 4px solid #4f46e5;">
+          <strong style="color: #4f46e5; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;">Network Node Identity</strong><br>
+          <span style="font-family: monospace; font-size: 14px; color: #333;">${contractAddress}</span>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f3f4f6; padding-bottom: 15px; margin-bottom: 25px;">
+          <h3 style="margin: 0; color: #111827; font-size: 20px;">Verified Candidate Standings</h3>
+          <span style="background: #e0e7ff; color: #4338ca; padding: 6px 12px; border-radius: 20px; font-size: 14px; font-weight: bold;">
+            Total Audited Legitimate Votes: ${totalVotes}
+          </span>
+        </div>
+      `;
+      
+      html += results
         .map(
           (result) => `
-          <div class="result-item">
-            <div class="result-name">${result.candidateName}</div>
-            <div class="result-bar">
-              <div
-                class="result-bar-fill"
-                style="width: ${(result.voteCount / maxVotes) * 100}%"
-              >
-                ${result.percentage}
-              </div>
+          <div style="background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+              <span style="font-weight: 600; font-size: 16px; color: #1f2937;">${result.candidateName}</span>
+              <span style="font-weight: bold; font-size: 15px; color: #4f46e5;">${result.voteCount} votes (${result.percentage})</span>
             </div>
-            <div class="result-count">${result.voteCount} votes</div>
+            <div style="height: 12px; background: #f3f4f6; border-radius: 6px; overflow: hidden;">
+              <div
+                style="height: 100%; background: linear-gradient(90deg, #4f46e5, #818cf8); width: ${maxVotes > 0 ? (result.voteCount / maxVotes) * 100 : 0}%; border-radius: 6px;"
+              ></div>
+            </div>
           </div>
         `
         )
         .join('');
-    }
 
-    // Display blockchain information
-    function displayBlockchainInfo(data) {
-      const { totalVotes, blockchainValid, totalBlocks, votes } = data;
+      // Invalid Results section removed per separation of concerns (handled by Deep Audit)
 
-      const statusClass = blockchainValid
-        ? 'blockchain-status valid'
-        : 'blockchain-status invalid';
-      const statusText = blockchainValid ? '✓ Valid' : '✗ Invalid';
-
-      let blockchainHTML = `
-        <div class="blockchain-info">
-          <h3>🔐 Blockchain Verification</h3>
-          <div class="${statusClass}">
-            <span>Chain Status: ${statusText}</span>
-            <span><strong>${totalBlocks} total blocks</strong> | <strong>${totalVotes} votes recorded</strong></span>
-          </div>
-      `;
-
-      if (votes.length > 0) {
-        blockchainHTML += `
-          <h4 style="margin-top: 15px; margin-bottom: 10px">Recent Votes on Blockchain:</h4>
-          <div style="background: white; border-radius: 6px; padding: 10px; max-height: 300px; overflow-y: auto;">
-        `;
-
-        // Show last 10 votes
-        votes
-          .slice(-10)
-          .reverse()
-          .forEach((vote, index) => {
-            blockchainHTML += `
-              <div style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-size: 12px;">
-                <div><strong>Block #${vote.index}</strong></div>
-                <div>Candidate: ${vote.candidateSelected}</div>
-                <div style="font-family: monospace; word-break: break-all; color: #666; font-size: 10px;">
-                  Hash: ${vote.hash.substring(0, 40)}...
-                </div>
-                <div style="color: #999; font-size: 11px;">
-                  ${new Date(vote.timestamp).toLocaleString()}
-                </div>
-              </div>
-            `;
-          });
-
-        blockchainHTML += `
-            </div>
-        `;
-      }
-
-      blockchainHTML += `
-          <p style="margin-top: 15px; font-size: 12px; color: #666;">
-            <strong>How Blockchain Ensures Security:</strong><br>
-            • Each vote is recorded as an immutable block<br>
-            • Each block is cryptographically linked to the previous one<br>
-            • Tampering with any vote invalidates the entire chain<br>
-            • The system verifies chain integrity on every query
-          </p>
-        </div>
-      `;
-
-      document.getElementById('blockchainInfoBox').innerHTML = blockchainHTML;
+      container.innerHTML = html;
     }
 
     // Show message
     function showMessage(message, type = 'info') {
       const messageBox = document.getElementById('messageBox');
-      messageBox.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+      const bgColor = type === 'danger' ? '#fee2e2' : '#dcfce3';
+      const textColor = type === 'danger' ? '#b91c1c' : '#166534';
+      const borderColor = type === 'danger' ? '#fca5a5' : '#86efac';
+      
+      messageBox.innerHTML = `
+        <div style="background: ${bgColor}; border: 1px solid ${borderColor}; color: ${textColor}; padding: 12px 20px; border-radius: 6px; margin-bottom: 20px; text-align: center; font-size: 14px; font-weight: 500;">
+          ${message}
+        </div>
+      `;
+      setTimeout(() => { messageBox.innerHTML = ''; }, 5000);
+    }
+
+    // Run Deep Audit
+    async function runAudit() {
+      const container = document.getElementById('resultsContainer');
+      const btn = document.getElementById('auditBtn');
+      
+      btn.textContent = "Scanning Ledger...";
+      btn.style.pointerEvents = "none";
+      
+      container.innerHTML = `
+        <div style="text-align: center; color: #b91c1c; font-size: 16px; padding: 30px;">
+          <div class="spinner" style="margin: 0 auto 20px auto; border-top-color: #b91c1c;"></div>
+          Traversing the Ethereum Blockchain and actively cross-verifying cryptographic hashes against the MongoDB Database...
+        </div>
+      `;
+
+      try {
+        const response = await API.runDeepAudit();
+        
+        if (response.success) {
+          if (response.manipulatedCount === 0) {
+            container.innerHTML = `
+              <div style="text-align: center; background: #dcfce3; border: 1px solid #86efac; padding: 40px; border-radius: 8px; margin-top: 20px;">
+                <h3 style="color: #166534; font-size: 24px; margin-bottom: 10px;">✅ Database is Pristine</h3>
+                <p style="color: #15803d; font-size: 16px;">
+                  All ${response.totalChecked} blockchain votes perfectly match the MongoDB records. No tampering detected.
+                </p>
+              </div>
+            `;
+          } else {
+            let fakedCounts = {};
+            response.manipulatedVotes.forEach(vote => {
+              const party = vote.candidateInDb;
+              fakedCounts[party] = (fakedCounts[party] || 0) + 1;
+            });
+
+            let html = `
+              <div style="text-align: left; background: #fef2f2; border: 2px solid #ef4444; padding: 30px; border-radius: 8px; margin-top: 20px;">
+                <h3 style="color: #991b1b; font-size: 24px; margin-bottom: 10px; border-bottom: 1px solid #fca5a5; padding-bottom: 10px;">
+                  🚨 CRITICAL: Database Tampering Detected!
+                </h3>
+                <p style="color: #b91c1c; font-size: 16px; margin-bottom: 20px;">
+                  The system scanned ${response.totalChecked} database records against the Ethereum Blockchain and successfully intercepted ${response.manipulatedCount} permanently disqualified fake votes.
+                </p>
+                
+                <h4 style="color: #7f1d1d; margin-top: 25px; margin-bottom: 15px; font-size: 18px;">🛑 Faked Votes by Party:</h4>
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px;">
+            `;
+
+            for (const [party, count] of Object.entries(fakedCounts)) {
+              html += `
+                  <div style="background: #fee2e2; border-left: 4px solid #ef4444; padding: 12px 15px; border-radius: 4px; display: flex; justify-content: space-between; font-weight: bold;">
+                    <span style="color: #7f1d1d;">${party}</span>
+                    <span style="color: #b91c1c; font-size: 16px;">${count} Faked Vote${count > 1 ? 's' : ''}</span>
+                  </div>
+              `;
+            }
+
+            html += `
+                </div>
+              </div>
+            `;
+            container.innerHTML = html;
+          }
+        } else {
+          showMessage('Audit Failed: ' + response.message, 'danger');
+          container.innerHTML = '';
+        }
+      } catch (err) {
+        showMessage('Error communicating with server during audit.', 'danger');
+        container.innerHTML = '';
+      } finally {
+        btn.textContent = "🔍 Perform Deep DB Audit";
+        btn.style.pointerEvents = "auto";
+      }
     }
 
     // Logout function
     function logout() {
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('userId');
-      localStorage.removeItem('username');
-      location.reload();
+      localStorage.removeItem('adminToken');
+      localStorage.removeItem('adminUserId');
+      window.location.href = 'index.html';
     }
-
-    // Auto-refresh results every 10 seconds
-    setInterval(loadResults, 10000);
   </script>
 </body>
 </html>

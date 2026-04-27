@@ -1,25 +1,18 @@
 /**
  * Authentication Routes
- * Handles user registration, login, and OTP verification
+ * Handles unified passwordless authentication and OTP verification
  */
 
 const express = require('express');
 const authController = require('../controllers/authController');
-const { verifyToken } = require('../middleware/auth');
 
 const router = express.Router();
 
 /**
- * POST /register
- * Register a new user with Aadhaar, PAN, username, and password
+ * POST /authenticate
+ * Unified login/register with Aadhaar, Voter Number, Mobile, and State. Returns OTP challenge.
  */
-router.post('/register', authController.register);
-
-/**
- * POST /login
- * Login with Aadhaar, PAN, username, and password
- */
-router.post('/login', authController.login);
+router.post('/authenticate', authController.authenticate);
 
 /**
  * POST /verify-otp
@@ -32,5 +25,31 @@ router.post('/verify-otp', authController.verifyOTP);
  * Request a new OTP
  */
 router.post('/resend-otp', authController.resendOTP);
+
+/**
+ * POST /admin-login
+ * Request Admin OTP for phone 9467125975
+ */
+router.post('/admin-login', authController.adminLogin);
+
+/**
+ * POST /admin-verify-otp
+ * Verify Admin OTP
+ */
+router.post('/admin-verify-otp', authController.adminVerifyOTP);
+
+const { verifyToken } = require('../middleware/auth');
+
+/**
+ * POST /register-biometric
+ * WebAuthn Passkeys: Bind mapped authentication hardware to native profile.
+ */
+router.post('/register-biometric', verifyToken, authController.registerBiometric);
+
+/**
+ * POST /verify-biometric-login
+ * WebAuthn Passkeys: Authenticate mapped hardware exclusively
+ */
+router.post('/verify-biometric-login', authController.verifyBiometricLogin);
 
 module.exports = router;

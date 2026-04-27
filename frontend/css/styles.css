@@ -132,9 +132,19 @@ header {
 }
 
 @keyframes wave {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(5deg); }
-  75% { transform: rotate(-5deg); }
+
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+
+  25% {
+    transform: rotate(5deg);
+  }
+
+  75% {
+    transform: rotate(-5deg);
+  }
 }
 
 nav a {
@@ -545,6 +555,7 @@ button:disabled {
   0% {
     transform: rotate(0deg);
   }
+
   100% {
     transform: rotate(360deg);
   }
@@ -604,6 +615,7 @@ a:hover {
 /* ==================== */
 
 @media (max-width: 768px) {
+
   .auth-container,
   .dashboard-container {
     margin: 20px 10px;
@@ -945,7 +957,7 @@ button:disabled {
   color: var(--text-light);
 }
 
-.candidate-card input[type='radio']:checked + .candidate-info {
+.candidate-card input[type='radio']:checked+.candidate-info {
   color: var(--primary-color);
 }
 
@@ -1127,6 +1139,7 @@ button:disabled {
   0% {
     transform: rotate(0deg);
   }
+
   100% {
     transform: rotate(360deg);
   }
@@ -1180,6 +1193,7 @@ a:hover {
 /* ==================== */
 
 @media (max-width: 768px) {
+
   .auth-container,
   .dashboard-container {
     margin: 20px 10px;
