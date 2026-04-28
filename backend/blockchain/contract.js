@@ -9,7 +9,7 @@ const privateKey = process.env.BLOCKCHAIN_PRIVATE_KEY || "0xac0974bec39a17e36ba4
 const wallet = new ethers.Wallet(privateKey, provider);
 
 // your deployed contract address
-const contractAddress = process.env.CONTRACT_ADDRESS || "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9";
+const contractAddress = process.env.CONTRACT_ADDRESS || "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
 // ABI (minimal - for vote function that accepts string)
 const abi = [

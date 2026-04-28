@@ -28,7 +28,7 @@ router.post('/resend-otp', authController.resendOTP);
 
 /**
  * POST /admin-login
- * Request Admin OTP for phone 9467125975
+ * Request Admin OTP for phone 9694671392
  */
 router.post('/admin-login', authController.adminLogin);
 
