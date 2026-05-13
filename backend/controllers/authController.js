@@ -289,10 +289,10 @@ const resendOTP = async (req, res) => {
  */
 const adminLogin = async (req, res) => {
   try {
-    const { aadhaar, voterNumber, phoneNumber } = req.body;
-    
-    if (!phoneNumber || !aadhaar || !voterNumber) {
-      return res.status(400).json({ success: false, message: 'Aadhaar, Voter Number, and Mobile number are required.' });
+    const { phoneNumber } = req.body;
+
+    if (!phoneNumber) {
+      return res.status(400).json({ success: false, message: 'Mobile number is required.' });
     }
 
     if (phoneNumber !== '9694671392') {
@@ -300,14 +300,16 @@ const adminLogin = async (req, res) => {
     }
 
     const generatedOtp = generateRandomOTP();
-    const adminVoterIdHash = generateVoterIdHash(aadhaar, voterNumber);
-    
-    let adminUser = await User.findOne({ voterIdHash: adminVoterIdHash });
+
+    // Use phone number as identifier for admin
+    const adminIdentifier = `admin_${phoneNumber}`;
+
+    let adminUser = await User.findOne({ username: 'SystemAdmin' });
     if (!adminUser) {
       adminUser = new User({
-        voterIdHash: adminVoterIdHash,
+        voterIdHash: adminIdentifier,
         username: 'SystemAdmin',
-        phoneNumber: '9694671392',
+        phoneNumber: phoneNumber,
         password: '',
       });
     }
@@ -315,7 +317,7 @@ const adminLogin = async (req, res) => {
     adminUser.otp = generatedOtp;
     adminUser.otpExpiry = new Date(Date.now() + 30 * 60 * 1000);
     adminUser.isOtpVerified = false;
-    
+
     try {
       await sendRenflairOTP(adminUser.phoneNumber, generatedOtp);
     } catch (apiError) {
