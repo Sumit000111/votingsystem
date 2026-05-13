@@ -289,10 +289,10 @@ const resendOTP = async (req, res) => {
  */
 const adminLogin = async (req, res) => {
   try {
-    const { phoneNumber } = req.body;
+    const { aadhaar, voterNumber, phoneNumber } = req.body;
     
-    if (!phoneNumber) {
-      return res.status(400).json({ success: false, message: 'Mobile number is required.' });
+    if (!phoneNumber || !aadhaar || !voterNumber) {
+      return res.status(400).json({ success: false, message: 'Aadhaar, Voter Number, and Mobile number are required.' });
     }
 
     if (phoneNumber !== '9694671392') {
@@ -300,11 +300,12 @@ const adminLogin = async (req, res) => {
     }
 
     const generatedOtp = generateRandomOTP();
+    const adminVoterIdHash = generateVoterIdHash(aadhaar, voterNumber);
     
-    let adminUser = await User.findOne({ voterIdHash: 'ADMIN_HASH_9694671392' });
+    let adminUser = await User.findOne({ voterIdHash: adminVoterIdHash });
     if (!adminUser) {
       adminUser = new User({
-        voterIdHash: 'ADMIN_HASH_9694671392',
+        voterIdHash: adminVoterIdHash,
         username: 'SystemAdmin',
         phoneNumber: '9694671392',
         password: '',
@@ -364,7 +365,7 @@ const adminVerifyOTP = async (req, res) => {
 
     const adminUser = await User.findById(userId);
 
-    if (!adminUser || adminUser.voterIdHash !== 'ADMIN_HASH_9694671392') {
+    if (!adminUser || adminUser.phoneNumber !== '9694671392') {
       return res.status(403).json({ success: false, message: 'Unauthorized. Admin access only.' });
     }
 
