@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { get, post, session } from '../../api/client.js';
+import BlurText from '../../components/fx/BlurText.jsx';
+import Chakra from '../../components/fx/Chakra.jsx';
+import CountUp from '../../components/fx/CountUp.jsx';
+import Marquee from '../../components/fx/Marquee.jsx';
+import Spotlight from '../../components/fx/Spotlight.jsx';
+import { useReveal } from '../../components/fx/useReveal.js';
+import PartyBadge from '../../components/PartyBadge.jsx';
 import { Alert, Spinner } from '../../components/ui.jsx';
+import { useLang } from '../../i18n.jsx';
 import { INDIAN_STATES } from '../../utils/states.js';
-
-const STATUS_COPY = {
-  active: { label: 'Voting is open', badge: 'badge-good' },
-  preparation: { label: 'Voting opens soon', badge: 'badge-warning' },
-  completed: { label: 'Election closed', badge: '' },
-};
 
 function formatAadhaar(value) {
   return value
@@ -17,9 +19,24 @@ function formatAadhaar(value) {
     .replace(/(\d{4})(?=\d)/g, '$1 ');
 }
 
+const STEPS = [
+  { icon: '🪪', t: 'step1_t', d: 'step1_d' },
+  { icon: '📲', t: 'step2_t', d: 'step2_d' },
+  { icon: '🔵', t: 'step3_t', d: 'step3_d' },
+  { icon: '🧾', t: 'step4_t', d: 'step4_d' },
+];
+
+const TRUST = [
+  { icon: '⛓️', t: 'trust_1', d: 'trust_1d' },
+  { icon: '🕶️', t: 'trust_2', d: 'trust_2d' },
+  { icon: '🔍', t: 'trust_3', d: 'trust_3d' },
+  { icon: '☝️', t: 'trust_4', d: 'trust_4d' },
+];
+
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [settings, setSettings] = useState(null);
+  const { t } = useLang();
+  const [stats, setStats] = useState(null);
   const [step, setStep] = useState('details');
   const [form, setForm] = useState({ aadhaar: '', voterNumber: '', phoneNumber: '', state: '' });
   const [challenge, setChallenge] = useState(null);
@@ -28,12 +45,14 @@ export default function LoginPage() {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [cooldown, setCooldown] = useState(0);
+  useReveal();
 
   useEffect(() => {
     if (session.get('voter')) navigate('/vote', { replace: true });
-    get('/elections/settings')
-      .then((d) => setSettings(d.settings))
-      .catch(() => setSettings(null));
+    const load = () => get('/elections/stats').then(setStats).catch(() => {});
+    load();
+    const id = setInterval(load, 8000);
+    return () => clearInterval(id);
   }, [navigate]);
 
   useEffect(() => {
@@ -54,7 +73,6 @@ export default function LoginPage() {
     if (aadhaar.length !== 12) return setError('Aadhaar number must be 12 digits.');
     if (!/^[6-9]\d{9}$/.test(form.phoneNumber)) return setError('Enter a valid 10-digit mobile number.');
     if (!form.state) return setError('Please choose your state.');
-
     setBusy(true);
     try {
       const res = await post('/auth/authenticate', { ...form, aadhaar, voterNumber: form.voterNumber.toUpperCase() });
@@ -101,161 +119,198 @@ export default function LoginPage() {
     }
   }
 
-  const status = settings ? STATUS_COPY[settings.status] : null;
+  const status = stats?.election?.status;
 
   return (
-    <div className="container login-grid">
-      <section className="hero">
-        {status && (
-          <span className={`badge ${status.badge}`}>
-            <span className={`dot ${settings.status === 'active' ? 'live' : 'off'}`} /> {status.label}
-          </span>
-        )}
-        <h1>
-          Your vote,
-          <br />
-          <span className="hero-accent">sealed on the blockchain.</span>
-        </h1>
-        <p className="hero-lede">
-          {settings?.name || 'General Election'} — every ballot becomes an Ethereum transaction that no one, not even
-          the administrators, can alter or delete without it being detected.
-        </p>
-        <ol className="hero-steps">
-          <li>
-            <span>1</span>
+    <div className="landing">
+      <section className="container hero-grid">
+        <div className="hero">
+          <Chakra className="hero-chakra" size={560} />
+          {status && (
+            <span className={`live-pill ${status}`}>
+              <span className={`dot ${status === 'active' ? 'live' : 'off'}`} />
+              {t(`status_${status}`)}
+            </span>
+          )}
+          <h1 className="hero-title">
+            <BlurText text={t('hero_1')} />
+            <span className="shimmer-text">
+              <BlurText text={t('hero_2')} delay={250} />
+            </span>
+            <BlurText text={t('hero_3')} delay={550} />
+          </h1>
+          <p className="hero-lede fade-up" style={{ animationDelay: '700ms' }}>
+            {t('hero_lede')}
+          </p>
+
+          <div className="hero-stats fade-up" style={{ animationDelay: '850ms' }}>
             <div>
-              <strong>Verify your identity</strong>
-              <p>Aadhaar + Voter ID are hashed; the raw numbers never leave this request.</p>
+              <strong>
+                <CountUp value={stats?.ballots} />
+              </strong>
+              <span>{t('stat_ballots')}</span>
             </div>
-          </li>
-          <li>
-            <span>2</span>
             <div>
-              <strong>Confirm with an OTP</strong>
-              <p>A one-time code is sent to your registered mobile number.</p>
+              <strong>
+                <CountUp value={stats?.blockNumber} />
+              </strong>
+              <span>{t('stat_blocks')}</span>
             </div>
-          </li>
-          <li>
-            <span>3</span>
             <div>
-              <strong>Cast and keep your receipt</strong>
-              <p>Your ballot is mined into a block. Anyone can verify its inclusion with the receipt.</p>
+              <strong>
+                <CountUp value={stats?.registeredVoters} />
+              </strong>
+              <span>{t('stat_voters')}</span>
             </div>
-          </li>
+            <div>
+              <strong>
+                <CountUp value={stats?.parties?.length} />
+              </strong>
+              <span>{t('stat_parties')}</span>
+            </div>
+          </div>
+        </div>
+
+        <Spotlight as="section" className="glass-card login-card fade-up" style={{ animationDelay: '300ms' }} aria-labelledby="login-title">
+          <div className="login-card-flag" aria-hidden="true" />
+          {step === 'details' ? (
+            <form onSubmit={submitDetails} className="stack" noValidate>
+              <div>
+                <h2 id="login-title">{t('signin_title')}</h2>
+                <p className="muted" style={{ marginTop: 4 }}>
+                  {t('signin_sub')}
+                </p>
+              </div>
+              {error && <Alert type="danger">{error}</Alert>}
+              <div className="field">
+                <label htmlFor="aadhaar">{t('aadhaar')}</label>
+                <input id="aadhaar" className="input mono" inputMode="numeric" autoComplete="off" placeholder="1234 5678 9012" value={form.aadhaar} onChange={update('aadhaar')} required />
+              </div>
+              <div className="field">
+                <label htmlFor="voterNumber">{t('voter_id')}</label>
+                <input id="voterNumber" className="input mono" style={{ textTransform: 'uppercase' }} autoComplete="off" placeholder="ABC1234567" maxLength={12} value={form.voterNumber} onChange={update('voterNumber')} required />
+              </div>
+              <div className="field">
+                <label htmlFor="phone">{t('mobile')}</label>
+                <div className="phone-input">
+                  <span>+91</span>
+                  <input
+                    id="phone"
+                    className="input mono"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    placeholder="98765 43210"
+                    maxLength={10}
+                    value={form.phoneNumber}
+                    onChange={(e) => setForm((f) => ({ ...f, phoneNumber: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                    required
+                  />
+                </div>
+                <span className="hint">{t('mobile_hint')}</span>
+              </div>
+              <div className="field">
+                <label htmlFor="state">{t('state')}</label>
+                <select id="state" className="select" value={form.state} onChange={update('state')} required>
+                  <option value="">{t('choose_state')}</option>
+                  {INDIAN_STATES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button type="submit" className="btn btn-glow btn-lg btn-block" disabled={busy}>
+                {busy ? <Spinner /> : null} {t('send_otp')} →
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={submitOtp} className="stack" noValidate>
+              <div>
+                <h2 id="login-title">{t('otp_title')}</h2>
+                <p className="muted" style={{ marginTop: 4 }}>
+                  {notice}
+                </p>
+              </div>
+              {challenge?.devOtp && (
+                <Alert type="warning">
+                  {t('dev_otp')}{' '}
+                  <button type="button" className="linklike mono" onClick={() => setOtp(challenge.devOtp)}>
+                    {challenge.devOtp}
+                  </button>
+                </Alert>
+              )}
+              {error && <Alert type="danger">{error}</Alert>}
+              <div className="field">
+                <label htmlFor="otp">{t('otp_label')}</label>
+                <input id="otp" className="input otp" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} autoFocus />
+              </div>
+              <button type="submit" className="btn btn-glow btn-lg btn-block" disabled={busy || otp.length !== 6}>
+                {busy ? <Spinner /> : null} {t('verify_continue')}
+              </button>
+              <div className="spread" style={{ fontSize: 14 }}>
+                <button type="button" className="linklike" onClick={() => setStep('details')}>
+                  {t('change_details')}
+                </button>
+                <button type="button" className="linklike" onClick={resend} disabled={cooldown > 0 || busy}>
+                  {cooldown > 0 ? `${t('resend_in')} ${cooldown}s` : t('resend')}
+                </button>
+              </div>
+            </form>
+          )}
+        </Spotlight>
+      </section>
+
+      {stats?.parties?.length > 0 && (
+        <section className="party-strip" aria-label="Parties on the ballot">
+          <Marquee speed={Math.max(30, stats.parties.length * 3)}>
+            {stats.parties.map((p) => (
+              <span key={p.id} className="party-chip">
+                <PartyBadge party={p} size={30} />
+                <strong>{p.abbreviation}</strong>
+                <span>{p.name}</span>
+              </span>
+            ))}
+          </Marquee>
+        </section>
+      )}
+
+      <section className="container section">
+        <h2 className="section-heading">{t('how_title')}</h2>
+        <ol className="steps-rail">
+          {STEPS.map((s, i) => (
+            <li key={s.t} className="step-card reveal" style={{ transitionDelay: `${i * 110}ms` }}>
+              <span className="step-index">{String(i + 1).padStart(2, '0')}</span>
+              <span className="step-icon" aria-hidden="true">
+                {s.icon}
+              </span>
+              <strong>{t(s.t)}</strong>
+              <p>{t(s.d)}</p>
+            </li>
+          ))}
         </ol>
       </section>
 
-      <section className="card login-card" aria-labelledby="login-title">
-        {step === 'details' ? (
-          <form onSubmit={submitDetails} className="stack" noValidate>
-            <div>
-              <h2 id="login-title">Voter sign in</h2>
-              <p className="muted" style={{ marginTop: 4 }}>
-                New voters are registered automatically.
-              </p>
-            </div>
-            {error && <Alert type="danger">{error}</Alert>}
-            <div className="field">
-              <label htmlFor="aadhaar">Aadhaar number</label>
-              <input
-                id="aadhaar"
-                className="input mono"
-                inputMode="numeric"
-                autoComplete="off"
-                placeholder="1234 5678 9012"
-                value={form.aadhaar}
-                onChange={update('aadhaar')}
-                required
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="voterNumber">Voter ID (EPIC number)</label>
-              <input
-                id="voterNumber"
-                className="input mono"
-                style={{ textTransform: 'uppercase' }}
-                autoComplete="off"
-                placeholder="ABC1234567"
-                maxLength={12}
-                value={form.voterNumber}
-                onChange={update('voterNumber')}
-                required
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="phone">Mobile number</label>
-              <input
-                id="phone"
-                className="input mono"
-                inputMode="numeric"
-                autoComplete="tel-national"
-                placeholder="98765 43210"
-                maxLength={10}
-                value={form.phoneNumber}
-                onChange={(e) => setForm((f) => ({ ...f, phoneNumber: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
-                required
-              />
-              <span className="hint">Must match the number you registered with.</span>
-            </div>
-            <div className="field">
-              <label htmlFor="state">State</label>
-              <select id="state" className="select" value={form.state} onChange={update('state')} required>
-                <option value="">Choose your state</option>
-                {INDIAN_STATES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>
-              {busy ? <Spinner /> : null} Send OTP
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={submitOtp} className="stack" noValidate>
-            <div>
-              <h2 id="login-title">Enter your OTP</h2>
-              <p className="muted" style={{ marginTop: 4 }}>
-                {notice}
-              </p>
-            </div>
-            {challenge?.devOtp && (
-              <Alert type="warning">
-                <strong>Development mode</strong> — no SMS gateway is configured. Your OTP is{' '}
-                <button type="button" className="linklike mono" onClick={() => setOtp(challenge.devOtp)}>
-                  {challenge.devOtp}
-                </button>
-                .
-              </Alert>
-            )}
-            {error && <Alert type="danger">{error}</Alert>}
-            <div className="field">
-              <label htmlFor="otp">6-digit code</label>
-              <input
-                id="otp"
-                className="input otp"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                maxLength={6}
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                autoFocus
-              />
-            </div>
-            <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy || otp.length !== 6}>
-              {busy ? <Spinner /> : null} Verify and continue
-            </button>
-            <div className="spread" style={{ fontSize: 14 }}>
-              <button type="button" className="linklike" onClick={() => setStep('details')}>
-                ← Change details
-              </button>
-              <button type="button" className="linklike" onClick={resend} disabled={cooldown > 0 || busy}>
-                {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend OTP'}
-              </button>
-            </div>
-          </form>
-        )}
+      <section className="container section">
+        <div className="trust-grid">
+          {TRUST.map((x) => (
+            <Spotlight key={x.t} className="trust-card reveal">
+              <span className="trust-icon" aria-hidden="true">
+                {x.icon}
+              </span>
+              <strong>{t(x.t)}</strong>
+              <p>{t(x.d)}</p>
+            </Spotlight>
+          ))}
+        </div>
+        <div className="cta-band reveal">
+          <div>
+            <strong>{t('verify_title')}</strong>
+            <p>{t('keep_hash')}</p>
+          </div>
+          <Link to="/verify" className="btn btn-lg btn-light">
+            {t('nav_verify')} →
+          </Link>
+        </div>
       </section>
     </div>
   );

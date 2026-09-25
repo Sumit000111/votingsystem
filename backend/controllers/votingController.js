@@ -37,10 +37,13 @@ async function getVotingStatus(req, res) {
     user.hasVoted ? Vote.findOne({ voterIdHash: user.voterIdHash }).lean() : null,
   ]);
 
+  const party = vote?.party ? await Party.findById(vote.party).lean() : null;
+
   res.json({
     success: true,
     hasVoted: user.hasVoted,
     votedFor: user.votedFor,
+    candidate: party ? formatParty(party) : null,
     receipt: receiptFor(vote),
     election: publicSettings(settings),
     user: { username: user.username, state: user.state, maskedAadhaar: user.maskedAadhaar },

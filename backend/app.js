@@ -28,8 +28,8 @@ if (!config.isTest) {
   app.use('/api', (req, res, next) => {
     const started = Date.now();
     res.on('finish', () => {
-      if (req.path !== '/admin/chain/stream') {
-        console.log(`${req.method} /api${req.path} → ${res.statusCode} (${Date.now() - started}ms)`);
+      if (!req.originalUrl.startsWith('/api/admin/chain/stream')) {
+        console.log(`${req.method} ${req.originalUrl.split('?')[0]} → ${res.statusCode} (${Date.now() - started}ms)`);
       }
     });
     next();

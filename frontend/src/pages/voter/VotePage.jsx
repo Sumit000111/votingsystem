@@ -1,65 +1,37 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { get, onSessionExpired, post, session } from '../../api/client.js';
+import Evm, { beep } from '../../components/Evm.jsx';
+import Confetti from '../../components/fx/Confetti.jsx';
 import PartyBadge from '../../components/PartyBadge.jsx';
-import { Alert, CopyButton, Loading, Modal, Segmented, Spinner } from '../../components/ui.jsx';
-import { formatDateTime, shortHash } from '../../utils/format.js';
+import VvpatSlip from '../../components/VvpatSlip.jsx';
+import { Alert, Loading, Modal, Segmented, Spinner } from '../../components/ui.jsx';
+import { useLang } from '../../i18n.jsx';
 
-const SUBMIT_STEPS = ['Signing ballot transaction', 'Mining block', 'Recording receipt'];
-
-function Receipt({ receipt, candidateName, fresh }) {
+function VotedPanel({ fresh, candidate, candidateName, receipt }) {
+  const { t } = useLang();
   return (
-    <div className={`card receipt ${fresh ? 'fresh' : ''}`}>
-      <div className="receipt-head">
-        <div className="receipt-seal" aria-hidden="true">
-          ✓
+    <div className="voted-layout">
+      {fresh && <Confetti />}
+      <div className="voted-message glass-card">
+        <div className="ink-finger" aria-hidden="true">
+          ☝️<span className="ink-mark" />
         </div>
-        <div>
-          <h2>{fresh ? 'Your vote is on the blockchain' : 'You have already voted'}</h2>
-          <p className="ink-2">
-            {candidateName ? (
-              <>
-                Ballot cast for <strong>{candidateName}</strong>.{' '}
-              </>
-            ) : null}
-            Each voter can vote only once; this ballot is final.
-          </p>
-        </div>
+        <h2 className="shimmer-text">{fresh ? t('voted_title') : t('already_title')}</h2>
+        <p className="ink-2">{t('voted_sub')}</p>
+        <span className="badge badge-accent">✓ {t('ink')}</span>
+        <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>
+          {t('keep_hash')}
+        </p>
       </div>
-      {receipt?.txHash ? (
-        <dl className="kv receipt-body">
-          <dt>Transaction</dt>
-          <dd className="mono">
-            {receipt.txHash} <CopyButton value={receipt.txHash} />
-          </dd>
-          <dt>Block</dt>
-          <dd className="mono">
-            #{receipt.blockNumber} · {shortHash(receipt.blockHash, 10, 8)}
-          </dd>
-          <dt>Recorded</dt>
-          <dd>{formatDateTime(receipt.timestamp || receipt.votedAt)}</dd>
-          <dt>Election</dt>
-          <dd style={{ textTransform: 'capitalize' }}>{receipt.electionType} election</dd>
-        </dl>
-      ) : (
-        <div className="receipt-body">
-          <Alert type="warning">No blockchain receipt is on file for this ballot.</Alert>
-        </div>
-      )}
-      {receipt?.txHash && (
-        <div className="receipt-foot">
-          <p className="muted">Keep the transaction hash. Anyone can use it to confirm your ballot was counted — without revealing your choice.</p>
-          <Link className="btn" to={`/verify/${receipt.txHash}`}>
-            Verify receipt →
-          </Link>
-        </div>
-      )}
+      <VvpatSlip candidate={candidate} candidateName={candidateName} receipt={receipt} animate={fresh} />
     </div>
   );
 }
 
 export default function VotePage() {
   const navigate = useNavigate();
+  const { t } = useLang();
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
   const [electionType, setElectionType] = useState('national');
@@ -104,6 +76,12 @@ export default function VotePage() {
       .catch((err) => setCandidatesError(err.message));
   }, [canVote, electionType]);
 
+  function press(candidate) {
+    setSelected(candidate);
+    setSubmitError(null);
+    setConfirming(true);
+  }
+
   async function castVote() {
     setSubmitting(true);
     setSubmitError(null);
@@ -112,10 +90,11 @@ export default function VotePage() {
     try {
       const res = await post('/voting/vote', { partyId: selected.id, electionType }, 'voter');
       timers.forEach(clearTimeout);
-      setSubmitStep(3);
+      beep();
       setJustVoted({ receipt: res.receipt, candidate: res.candidate });
       setStatus((s) => ({ ...s, hasVoted: true, votedFor: res.candidate.name, receipt: res.receipt }));
       setConfirming(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       timers.forEach(clearTimeout);
       setSubmitError(err.message);
@@ -129,7 +108,7 @@ export default function VotePage() {
       <div className="container narrow">
         <Alert type="danger">{error.message}</Alert>
         <button type="button" className="btn" style={{ marginTop: 16 }} onClick={signOut}>
-          Back to sign in
+          ← {t('change_details')}
         </button>
       </div>
     );
@@ -138,111 +117,76 @@ export default function VotePage() {
 
   const { election, user } = status;
   const tabs = [
-    { value: 'national', label: '🇮🇳 National election', disabled: !election.nationalElectionEnabled },
-    { value: 'state', label: `📍 ${user.state} state election`, disabled: !election.stateElectionEnabled },
+    { value: 'national', label: `🇮🇳 ${t('national')}`, disabled: !election.nationalElectionEnabled },
+    { value: 'state', label: `📍 ${user.state} · ${t('state_election')}`, disabled: !election.stateElectionEnabled },
   ];
 
   return (
-    <div className="container narrow stack" style={{ gap: 20 }}>
-      <div className="spread">
-        <div>
-          <h1 className="page-title">{election.name}</h1>
-          <p className="page-sub">
-            {user.username} · Aadhaar {user.maskedAadhaar || 'on file'} · {user.state}
-          </p>
+    <div className="container booth stack" style={{ gap: 24 }}>
+      <div className="booth-head glass-card">
+        <div className="voter-id-card">
+          <span className="voter-avatar" aria-hidden="true">
+            {user.username.slice(-2).toUpperCase()}
+          </span>
+          <div>
+            <strong>{user.username}</strong>
+            <span className="muted">
+              Aadhaar {user.maskedAadhaar || '—'} · {user.state}
+            </span>
+          </div>
+        </div>
+        <div className="booth-election">
+          <span className="muted">{election.name}</span>
+          <span className={`live-pill ${election.status}`}>
+            <span className={`dot ${election.status === 'active' ? 'live' : 'off'}`} />
+            {t(`status_${election.status}`)}
+          </span>
         </div>
         <button type="button" className="btn btn-sm" onClick={signOut}>
-          Sign out
+          {t('sign_out')}
         </button>
       </div>
 
       {status.hasVoted ? (
-        <Receipt
-          receipt={justVoted?.receipt || status.receipt}
-          candidateName={justVoted?.candidate?.name || status.votedFor}
+        <VotedPanel
           fresh={Boolean(justVoted)}
+          candidate={justVoted?.candidate || status.candidate}
+          candidateName={status.votedFor}
+          receipt={justVoted?.receipt || status.receipt}
         />
       ) : election.status !== 'active' ? (
         <Alert type="warning">
-          {election.status === 'completed'
-            ? 'This election has closed. '
-            : 'Voting has not opened yet. Please come back when the election is active. '}
-          {election.status === 'completed' && <Link to="/results">See the results →</Link>}
+          {election.status === 'completed' ? `${t('closed')} ` : t('not_open')}{' '}
+          {election.status === 'completed' && <Link to="/results">{t('see_results')}</Link>}
         </Alert>
       ) : (
         <>
           {election.nationalElectionEnabled && election.stateElectionEnabled && (
-            <Segmented label="Election" options={tabs} value={electionType} onChange={setElectionType} />
+            <div className="booth-tabs">
+              <Segmented label="Election" options={tabs} value={electionType} onChange={setElectionType} />
+            </div>
           )}
-
-          <section className="card" aria-labelledby="ballot-title">
-            <div className="card-header">
-              <div>
-                <h2 id="ballot-title">Your ballot</h2>
-                <div className="sub">Select one party, then confirm. You cannot change your vote afterwards.</div>
-              </div>
-              {candidates && <span className="badge">{candidates.length} candidates</span>}
-            </div>
-            <div className="card-body">
-              {candidatesError ? (
-                <Alert type="danger">{candidatesError}</Alert>
-              ) : !candidates ? (
-                <Loading label="Loading candidates…" />
-              ) : (
-                <div className="ballot" role="radiogroup" aria-labelledby="ballot-title">
-                  {candidates.map((c) => (
-                    <label key={c.id} className={`ballot-option ${selected?.id === c.id ? 'selected' : ''}`}>
-                      <input
-                        type="radio"
-                        name="candidate"
-                        value={c.id}
-                        checked={selected?.id === c.id}
-                        onChange={() => setSelected(c)}
-                      />
-                      <PartyBadge party={c} size={48} />
-                      <span className="ballot-text">
-                        <strong>{c.name}</strong>
-                        <span className="muted">
-                          {c.abbreviation}
-                          {c.ideology ? ` · ${c.ideology}` : ''}
-                        </span>
-                      </span>
-                      <span className="ballot-radio" aria-hidden="true" />
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-
-          <div className="vote-bar">
-            <span className="ink-2">
-              {selected ? (
-                <>
-                  Selected: <strong>{selected.name}</strong>
-                </>
-              ) : (
-                'No party selected'
-              )}
-            </span>
-            <button type="button" className="btn btn-primary btn-lg" disabled={!selected} onClick={() => setConfirming(true)}>
-              Cast vote
-            </button>
-          </div>
+          {candidatesError ? (
+            <Alert type="danger">{candidatesError}</Alert>
+          ) : !candidates ? (
+            <Loading label="Loading candidates…" />
+          ) : (
+            <Evm candidates={candidates} selected={selected} onPress={press} disabled={submitting} busy={submitting} />
+          )}
         </>
       )}
 
       {confirming && selected && (
         <Modal
-          title="Confirm your vote"
-          onClose={() => !submitting && setConfirming(false)}
+          title={t('confirm_title')}
+          onClose={() => !submitting && (setConfirming(false), setSelected(null))}
           footer={
             <>
-              <button type="button" className="btn" onClick={() => setConfirming(false)} disabled={submitting}>
-                Go back
+              <button type="button" className="btn" onClick={() => (setConfirming(false), setSelected(null))} disabled={submitting}>
+                {t('go_back')}
               </button>
-              <button type="button" className="btn btn-primary" onClick={castVote} disabled={submitting}>
-                {submitting ? <Spinner /> : null} Confirm and cast vote
+              <button type="button" className="btn btn-glow" onClick={castVote} disabled={submitting}>
+                {submitting ? <Spinner /> : null} {t('confirm_cast')}
               </button>
             </>
           }
@@ -256,7 +200,7 @@ export default function VotePage() {
           </div>
           {submitting ? (
             <ol className="submit-steps" aria-live="polite">
-              {SUBMIT_STEPS.map((label, i) => (
+              {[t('step_sign'), t('step_mine'), t('step_record')].map((label, i) => (
                 <li key={label} className={i < submitStep ? 'done' : i === submitStep ? 'active' : ''}>
                   <span className="step-mark">{i < submitStep ? '✓' : i === submitStep ? <Spinner /> : ''}</span>
                   {label}
@@ -265,8 +209,7 @@ export default function VotePage() {
             </ol>
           ) : (
             <p className="ink-2" style={{ marginTop: 16 }}>
-              Your ballot will be written to the Ethereum ledger as a permanent transaction. It cannot be changed or
-              withdrawn.
+              {t('confirm_body')}
             </p>
           )}
           {submitError && (

@@ -17,6 +17,7 @@ import Voters from './pages/admin/Voters.jsx';
 import './components/charts/charts.css';
 import './components/layout.css';
 import './components/chain/chain.css';
+import './styles/public.css';
 
 export default function App() {
   return (

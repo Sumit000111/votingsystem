@@ -9,12 +9,23 @@ and contract event.
 
 ## What it does
 
+![Landing page](docs/screenshots/voter-login.png)
+
+| EVM-style ballot | VVPAT blockchain slip |
+| --- | --- |
+| ![EVM ballot](docs/screenshots/evm-ballot.png) | ![VVPAT slip](docs/screenshots/vvpat-slip.png) |
+
 **Voters**
+- A landing page built for the Indian public: tricolour aurora backdrop, a rotating Ashoka Chakra,
+  live counters (ballots on-chain, blocks, voters, parties), a party marquee and an
+  **English / हिन्दी** toggle.
 - Sign in with Aadhaar + Voter ID + mobile number and confirm with an SMS OTP. Aadhaar and
   Voter ID are only ever stored as a SHA-256 hash.
-- See the ballot for their state (national and/or state election) and cast one vote.
-- Every ballot is an Ethereum transaction. The voter gets a receipt (tx hash, block number)
-  that anyone can check at `/verify` without revealing the choice.
+- Vote on a ballot modelled on the Indian **EVM** — serial number, party symbol, red lamp and blue
+  button per candidate, with the confirmation beep — for their state (national and/or state election).
+- Every ballot is an Ethereum transaction. A **VVPAT-style paper slip** prints the receipt
+  (tx hash, block number), with tricolour confetti and an "indelible ink" mark. Anyone can check
+  the receipt at `/verify` without revealing the choice.
 - Results are public once the election is closed, read straight from the contract.
 
 **Administrators**

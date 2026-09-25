@@ -3,10 +3,13 @@ import { useNavigate, useParams } from 'react-router';
 import { get } from '../../api/client.js';
 import { Alert, CopyButton, Spinner } from '../../components/ui.jsx';
 import { formatDateTime, formatNumber } from '../../utils/format.js';
+import { useLang } from '../../i18n.jsx';
+import Chakra from '../../components/fx/Chakra.jsx';
 
 export default function VerifyReceiptPage() {
   const { txHash } = useParams();
   const navigate = useNavigate();
+  const { t } = useLang();
   const [input, setInput] = useState(txHash || '');
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -32,14 +35,12 @@ export default function VerifyReceiptPage() {
 
   return (
     <div className="container narrow stack" style={{ gap: 20 }}>
-      <div>
-        <h1 className="page-title">Verify a ballot receipt</h1>
-        <p className="page-sub">
-          Paste the transaction hash from your receipt to confirm the ballot was mined into the voting blockchain. Your
-          choice is never shown.
-        </p>
+      <div className="page-hero">
+        <Chakra size={220} className="page-hero-chakra" />
+        <h1 className="display-title">{t('verify_title')}</h1>
+        <p className="page-sub">{t('verify_sub')}</p>
       </div>
-      <form className="card card-body row wrap" onSubmit={submit}>
+      <form className="glass-card card-body row wrap" onSubmit={submit}>
         <label htmlFor="tx" className="sr-only">
           Transaction hash
         </label>
@@ -52,15 +53,15 @@ export default function VerifyReceiptPage() {
           onChange={(e) => setInput(e.target.value)}
           spellCheck={false}
         />
-        <button type="submit" className="btn btn-navy" disabled={busy}>
-          {busy ? <Spinner /> : null} Verify
+        <button type="submit" className="btn btn-glow" disabled={busy}>
+          {busy ? <Spinner /> : null} {t('verify_btn')}
         </button>
       </form>
 
       {error && <Alert type="danger">{error}</Alert>}
 
       {result && (
-        <div className="card receipt fresh">
+        <div className="glass-card receipt fresh">
           <div className="receipt-head">
             <div className="receipt-seal" aria-hidden="true">
               ✓

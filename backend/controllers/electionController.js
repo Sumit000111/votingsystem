@@ -90,4 +90,23 @@ async function getPublicResults(req, res) {
   });
 }
 
-module.exports = { getElectionSettings, getCandidates, getPublicResults, ballotQuery, formatParty, publicSettings };
+/** GET /api/elections/stats — public live counters for the landing page. */
+async function getPublicStats(req, res) {
+  const [settings, parties, voters] = await Promise.all([
+    ElectionSettings.current(),
+    Party.find({ isActive: true }).select('name abbreviation symbol image color partyType').lean(),
+    User.estimatedDocumentCount(),
+  ]);
+  const status = await chain.getStatus();
+  res.json({
+    success: true,
+    election: publicSettings(settings),
+    ballots: status.contract?.totalVotes ?? null,
+    blockNumber: status.blockNumber ?? null,
+    chainOnline: Boolean(status.connected && status.contract?.deployed),
+    registeredVoters: voters,
+    parties: parties.map(formatParty),
+  });
+}
+
+module.exports = { getPublicStats, getElectionSettings, getCandidates, getPublicResults, ballotQuery, formatParty, publicSettings };
