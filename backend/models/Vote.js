@@ -1,72 +1,43 @@
 /**
- * Vote Model
- * Stores voting records linked to Ethereum blockchain transactions
+ * Off-chain mirror of a ballot. The Ethereum transaction (`txHash`) is the
+ * source of truth; this record exists for fast queries and is continuously
+ * cross-checked against the chain by the audit.
  */
 
 const mongoose = require('mongoose');
 
 const voteSchema = new mongoose.Schema(
   {
-    // Reference to the User who cast the vote
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    // One ballot per voter.
+    voterIdHash: { type: String, required: true, unique: true },
+    // Anonymous key recorded on-chain (HMAC of voterIdHash).
+    voterKey: { type: String, default: null },
 
-    // Hashed voter ID (for blockchain record)
-    voterIdHash: {
-      type: String,
-      required: true,
-    },
+    candidateSelected: { type: String, required: true, trim: true },
+    party: { type: mongoose.Schema.Types.ObjectId, ref: 'Party', default: null },
+    partyAbbreviation: { type: String, default: null },
+    electionType: { type: String, enum: ['national', 'state'], default: 'national' },
+    state: { type: String, default: null },
 
-    // Name of the candidate voted for
-    candidateSelected: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    txHash: { type: String, unique: true, sparse: true },
+    blockNumber: { type: Number, default: null },
+    blockHash: { type: String, default: null },
+    gasUsed: { type: String, default: null },
 
-    // Timestamp when the vote was cast
-    votedAt: {
-      type: Date,
-      default: Date.now,
-    },
+    votedAt: { type: Date, default: Date.now },
 
-    // Ethereum transaction hash for this vote
-    // Optional: only set if blockchain transaction succeeds
-    txHash: {
-      type: String,
-      sparse: true,
-      unique: true,
-    },
+    ipAddress: { type: String, default: null },
+    userAgent: { type: String, default: null },
 
-    // IP address of the voter (for audit purposes)
-    ipAddress: {
-      type: String,
-      default: null,
-    },
-
-    // Browser/User agent info (for audit purposes)
-    userAgent: {
-      type: String,
-      default: null,
-    },
-
-    // Permanent flag for tampered votes detected during audit
-    isDisqualified: {
-      type: Boolean,
-      default: false,
-    },
+    // Set by the audit when this record does not match the blockchain.
+    isDisqualified: { type: Boolean, default: false },
+    auditReason: { type: String, default: null },
+    auditedAt: { type: Date, default: null },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-// Index for faster lookups
-voteSchema.index({ userId: 1 });
-voteSchema.index({ voterIdHash: 1 });
-voteSchema.index({ txHash: 1 });
+voteSchema.index({ votedAt: 1 });
 
 module.exports = mongoose.model('Vote', voteSchema, 'votes');

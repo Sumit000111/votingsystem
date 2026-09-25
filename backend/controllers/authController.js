@@ -1,465 +1,205 @@
 /**
- * Authentication Controller
- * Unified Login/Register logic with Renflair SMS Gateway OTP
+ * Passwordless authentication for voters (Aadhaar + Voter ID + mobile, then
+ * SMS OTP) and administrators (whitelisted mobile, then SMS OTP).
  */
 
-const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
+const config = require('../config');
 const User = require('../models/User');
-const axios = require('axios');
+const Admin = require('../models/Admin');
+const HttpError = require('../utils/httpError');
+const { sendOtp } = require('../services/sms');
+const { signVoterToken, signAdminToken } = require('../middleware/auth');
+const { voterIdHash, generateOtp, hashOtp, otpMatches, maskPhone } = require('../utils/crypto');
+const { INDIAN_STATES } = require('../utils/states');
 
-// Regex patterns for validation
-const AADHAAR_REGEX = /^[0-9]{12}$/; // Exactly 12 digits
-const MOBILE_REGEX = /^[0-9]{10}$/; // Standard 10-digit mobile
+const AADHAAR_REGEX = /^[0-9]{12}$/;
+const MOBILE_REGEX = /^[6-9][0-9]{9}$/;
+const VOTER_ID_REGEX = /^[A-Z0-9]{3,12}$/;
 
-// Renflair API Key
-const RENFLAIR_API_KEY = process.env.RENFLAIR_API_KEY || '294a8ed24b1ad22ec2e7efea049b8737';
-
-/**
- * Generate SHA-256 hash from Aadhaar and Voter Number
- */
-const generateVoterIdHash = (aadhaar, voterNumber) => {
-  const combinedData = aadhaar + voterNumber.toUpperCase();
-  return crypto.createHash('sha256').update(combinedData).digest('hex');
-};
-
-/**
- * Generate a 6-digit random OTP
- */
-const generateRandomOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-};
-
-/**
- * Send OTP via Renflair API
- */
-const sendRenflairOTP = async (phone, otp) => {
-  const url = `https://sms.renflair.in/V1.php?API=${RENFLAIR_API_KEY}&PHONE=${phone}&OTP=${otp}`;
-  const response = await axios.get(url);
-  return response.data;
-};
-
-/**
- * Authenticate User (Login / Register Unified)
- * POST /authenticate
- */
-const authenticate = async (req, res) => {
-  try {
-    const { aadhaar, voterNumber, phoneNumber, state } = req.body;
-
-    if (!aadhaar || !voterNumber || !phoneNumber || !state) {
-      return res.status(400).json({
-        success: false,
-        message: 'All fields are required (Aadhaar, Voter Number, Mobile, State).',
-      });
-    }
-
-    if (!AADHAAR_REGEX.test(aadhaar)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid Aadhaar number. Must be exactly 12 digits.',
-      });
-    }
-
-    if (!MOBILE_REGEX.test(phoneNumber)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid Mobile number. Must be exactly 10 digits.',
-      });
-    }
-
-    // Generate hashed voter ID
-    const voterIdHash = generateVoterIdHash(aadhaar, voterNumber);
-
-    // Check if voter already exists
-    let user = await User.findOne({ voterIdHash });
-
-    console.log(`[AUTH] Login attempt for Hash: ${voterIdHash}, Phone: ${phoneNumber}`);
-    if (!user) {
-      console.log(`[AUTH] Creating NEW user for Hash: ${voterIdHash}`);
-      // Auto-create newly registered user entry
-      let username = aadhaar; // Using aadhaar as username
-      
-      user = new User({
-        voterIdHash,
-        username,
-        phoneNumber,
-        state,
-        password: '', // Passwordless
-      });
-    } else {
-      console.log(`[AUTH] Found EXISTING user for Hash: ${voterIdHash}. hasVoted: ${user.hasVoted}`);
-      // User exists, just update their state or mobile if needed
-      user.state = state;
-      user.phoneNumber = phoneNumber; 
-    }
-
-    // Determine Hardware Access bypass
-    if (user && user.biometricCredentialId) {
-       return res.status(200).json({
-          success: true,
-          skipOtp: true,
-          biometricCredentialId: user.biometricCredentialId,
-          userId: user._id
-       });
-    }
-
-    // Generate local OTP and expiry (30 mins)
-    const generatedOtp = generateRandomOTP();
-    user.otp = generatedOtp;
-    user.otpExpiry = new Date(Date.now() + 30 * 60 * 1000);
-    user.isOtpVerified = false;
-
-    // Send OTP via Renflair
-    try {
-      await sendRenflairOTP(user.phoneNumber, generatedOtp);
-    } catch (apiError) {
-      console.error('Renflair Send OTP Error:', apiError.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send OTP through SMS provider.',
-      });
-    }
-
-    // Save user to DB only after SMS is successfully sent
-    await user.save();
-
-    // Generate preliminary JWT token
-    const token = jwt.sign(
-      {
-        userId: user._id,
-        voterIdHash: user.voterIdHash,
-        isOtpVerified: false,
-        state: user.state,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    return res.status(201).json({
-      success: true,
-      message: 'OTP has been sent to your mobile. Please verify.',
-      token,
-      userId: user._id,
-      username: user.username,
-      state: user.state
-    });
-  } catch (error) {
-    console.error('Authentication error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error during authentication.',
-      error: error.message,
-    });
+/** Issue a fresh OTP on an account document (voter or admin) and deliver it. */
+async function issueOtp(account) {
+  if (account.otpSentAt && Date.now() - account.otpSentAt.getTime() < config.otp.resendCooldownSeconds * 1000) {
+    const wait = Math.ceil(config.otp.resendCooldownSeconds - (Date.now() - account.otpSentAt.getTime()) / 1000);
+    throw new HttpError(429, `Please wait ${wait}s before requesting another OTP.`);
   }
-};
 
-/**
- * Verify OTP Local Database Check
- * POST /verify-otp
- */
-const verifyOTP = async (req, res) => {
+  const otp = generateOtp();
   try {
-    const { userId, otp } = req.body;
-
-    if (!userId || !otp) {
-      return res.status(400).json({
-        success: false,
-        message: 'User ID and OTP are required.',
-      });
-    }
-
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found.',
-      });
-    }
-
-    // Check expiry
-    if (!user.otpExpiry || user.otpExpiry < new Date()) {
-      return res.status(400).json({
-        success: false,
-        message: 'OTP has expired. Please request a new one.',
-      });
-    }
-
-    // Determine correctness locally
-    if (user.otp === otp) {
-      user.isOtpVerified = true;
-      user.otp = null;
-      user.otpExpiry = null;
-      await user.save();
-
-      const token = jwt.sign(
-        {
-          userId: user._id,
-          voterIdHash: user.voterIdHash,
-          isOtpVerified: true,
-          state: user.state
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: '24h' }
-      );
-
-      return res.status(200).json({
-        success: true,
-        message: 'Authentication successful. You can now vote.',
-        token,
-        userId: user._id,
-        username: user.username,
-        state: user.state
-      });
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid OTP provided.',
-      });
-    }
-  } catch (error) {
-    console.error('OTP verification error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error during OTP verification.',
-      error: error.message,
-    });
+    await sendOtp(account.phoneNumber, otp);
+  } catch (err) {
+    console.error('[auth] SMS delivery failed:', err.message);
+    throw new HttpError(502, 'Could not send the OTP SMS. Please try again shortly.');
   }
-};
 
-/**
- * Resend OTP Local Generation
- * POST /resend-otp
- */
-const resendOTP = async (req, res) => {
-  try {
-    const { userId } = req.body;
+  account.otpHash = hashOtp(otp);
+  account.otpExpiry = new Date(Date.now() + config.otp.ttlMinutes * 60 * 1000);
+  account.otpAttempts = 0;
+  account.otpSentAt = new Date();
+  await account.save();
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: 'User ID is required.',
-      });
-    }
+  return config.otp.exposeInResponse ? { devOtp: otp } : {};
+}
 
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found.',
-      });
-    }
-
-    // Generate new OTP and update expiry
-    const newOtp = generateRandomOTP();
-    user.otp = newOtp;
-    user.otpExpiry = new Date(Date.now() + 30 * 60 * 1000);
-    await user.save();
-
-    // Send via Renflair
-    try {
-      await sendRenflairOTP(user.phoneNumber, newOtp);
-    } catch (apiError) {
-      console.error('Renflair Resend Error:', apiError.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to resend OTP via SMS gateway.',
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: 'New OTP sent successfully.',
-    });
-  } catch (error) {
-    console.error('Resend OTP error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error during OTP resend.',
-      error: error.message,
-    });
+/** Check an OTP against an account document; throws on failure. */
+async function consumeOtp(account, otp) {
+  if (!account.otpHash || !account.otpExpiry) {
+    throw new HttpError(400, 'No OTP pending. Please request a new one.');
   }
-};
+  if (account.otpExpiry < new Date()) {
+    throw new HttpError(400, 'OTP has expired. Please request a new one.');
+  }
+  if (account.otpAttempts >= config.otp.maxAttempts) {
+    throw new HttpError(429, 'Too many incorrect attempts. Please request a new OTP.');
+  }
+  if (!otpMatches(String(otp).trim(), account.otpHash)) {
+    account.otpAttempts += 1;
+    await account.save();
+    const left = config.otp.maxAttempts - account.otpAttempts;
+    throw new HttpError(400, left > 0 ? `Incorrect OTP. ${left} attempt(s) left.` : 'Too many incorrect attempts. Please request a new OTP.');
+  }
+  account.otpHash = null;
+  account.otpExpiry = null;
+  account.otpAttempts = 0;
+  account.otpSentAt = null;
+  account.lastLoginAt = new Date();
+  await account.save();
+}
 
-/**
- * Admin Login
- * POST /admin-login
- */
-const adminLogin = async (req, res) => {
-  try {
-    const { phoneNumber } = req.body;
+// ---------------------------------------------------------------------------
+// Voters
+// ---------------------------------------------------------------------------
 
-    if (!phoneNumber) {
-      return res.status(400).json({ success: false, message: 'Mobile number is required.' });
-    }
+/** POST /api/auth/authenticate — register or sign in, then send an OTP. */
+async function authenticate(req, res) {
+  const aadhaar = String(req.body.aadhaar || '').replace(/\s+/g, '');
+  const voterNumber = String(req.body.voterNumber || '').trim().toUpperCase();
+  const phoneNumber = String(req.body.phoneNumber || '').trim();
+  const state = String(req.body.state || '').trim();
 
-    if (phoneNumber !== '9694671392') {
-      return res.status(403).json({ success: false, message: 'Unauthorized. Admin access only.' });
-    }
+  if (!AADHAAR_REGEX.test(aadhaar)) throw new HttpError(400, 'Aadhaar number must be exactly 12 digits.');
+  if (!VOTER_ID_REGEX.test(voterNumber)) throw new HttpError(400, 'Voter ID must be 3–12 letters or digits.');
+  if (!MOBILE_REGEX.test(phoneNumber)) throw new HttpError(400, 'Enter a valid 10-digit Indian mobile number.');
+  if (!INDIAN_STATES.includes(state)) throw new HttpError(400, 'Please select a valid state.');
 
-    const generatedOtp = generateRandomOTP();
+  const idHash = voterIdHash(aadhaar, voterNumber);
+  let user = await User.findOne({ voterIdHash: idHash });
+  const isNew = !user;
 
-    // Use phone number as identifier for admin
-    const adminIdentifier = `admin_${phoneNumber}`;
-
-    let adminUser = await User.findOne({ username: 'SystemAdmin' });
-    if (!adminUser) {
-      adminUser = new User({
-        voterIdHash: adminIdentifier,
-        username: 'SystemAdmin',
-        phoneNumber: phoneNumber,
-        password: '',
-      });
-    }
-
-    adminUser.otp = generatedOtp;
-    adminUser.otpExpiry = new Date(Date.now() + 30 * 60 * 1000);
-    adminUser.isOtpVerified = false;
-
-    try {
-      await sendRenflairOTP(adminUser.phoneNumber, generatedOtp);
-    } catch (apiError) {
-      console.error('Renflair Send OTP Error for Admin:', apiError.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to send admin OTP through SMS provider.',
-      });
-    }
-
-    await adminUser.save();
-
-    const token = jwt.sign(
-      {
-        userId: adminUser._id,
-        isAdminAccount: true,
-        isOtpVerified: false,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: 'Admin OTP has been sent. Please verify.',
-      token,
-      userId: adminUser._id,
-      otp: generatedOtp
+  if (!user) {
+    user = new User({
+      voterIdHash: idHash,
+      username: `Voter ${idHash.slice(0, 8)}`,
+      maskedAadhaar: `XXXX XXXX ${aadhaar.slice(-4)}`,
+      phoneNumber,
+      state,
     });
-  } catch (error) {
-    console.error('Admin Login error:', error);
-    return res.status(500).json({ success: false, message: 'Error during admin login.' });
+  } else if (user.phoneNumber !== phoneNumber) {
+    // The mobile number is bound at registration so someone who knows a
+    // voter's Aadhaar + Voter ID cannot redirect the OTP to their own phone.
+    throw new HttpError(403, 'This mobile number does not match the one registered for this voter.');
+  } else if (user.hasVoted && user.state !== state) {
+    // The state decides the ballot; it cannot change after voting.
+    throw new HttpError(400, `This voter is registered in ${user.state}.`);
+  } else {
+    user.state = state;
   }
-};
 
-/**
- * Admin Verify OTP
- * POST /admin-verify-otp
- */
-const adminVerifyOTP = async (req, res) => {
-  try {
-    const { userId, otp } = req.body;
+  const dev = await issueOtp(user);
 
-    if (!userId || !otp) {
-      return res.status(400).json({ success: false, message: 'User ID and OTP are required.' });
-    }
+  res.status(isNew ? 201 : 200).json({
+    success: true,
+    message: `OTP sent to ${maskPhone(phoneNumber)}.`,
+    userId: user._id,
+    maskedPhone: maskPhone(phoneNumber),
+    isNewVoter: isNew,
+    ...dev,
+  });
+}
 
-    const adminUser = await User.findById(userId);
+/** POST /api/auth/verify-otp */
+async function verifyOTP(req, res) {
+  const { userId, otp } = req.body;
+  if (!userId || !otp) throw new HttpError(400, 'User ID and OTP are required.');
 
-    if (!adminUser || adminUser.phoneNumber !== '9694671392') {
-      return res.status(403).json({ success: false, message: 'Unauthorized. Admin access only.' });
-    }
+  const user = await User.findById(userId).catch(() => null);
+  if (!user) throw new HttpError(404, 'Voter not found. Please start again.');
 
-    if (!adminUser.otpExpiry || adminUser.otpExpiry < new Date()) {
-      return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
-    }
+  await consumeOtp(user, otp);
 
-    if (adminUser.otp === otp) {
-      adminUser.isOtpVerified = true;
-      adminUser.otp = null;
-      adminUser.otpExpiry = null;
-      await adminUser.save();
+  res.json({
+    success: true,
+    message: 'Verified. You may now vote.',
+    token: signVoterToken(user),
+    user: publicUser(user),
+  });
+}
 
-      const token = jwt.sign(
-        {
-          userId: adminUser._id,
-          isAdminAccount: true,
-          isOtpVerified: true,
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: '24h' }
-      );
+/** POST /api/auth/resend-otp */
+async function resendOTP(req, res) {
+  const user = await User.findById(req.body.userId).catch(() => null);
+  if (!user) throw new HttpError(404, 'Voter not found. Please start again.');
+  const dev = await issueOtp(user);
+  res.json({ success: true, message: `New OTP sent to ${maskPhone(user.phoneNumber)}.`, ...dev });
+}
 
-      return res.status(200).json({
-        success: true,
-        message: 'Admin authentication successful.',
-        token,
-        userId: adminUser._id,
-        username: 'Administrator'
-      });
-    } else {
-      return res.status(400).json({ success: false, message: 'Invalid OTP provided.' });
-    }
-  } catch (error) {
-    console.error('Admin OTP verification error:', error);
-    return res.status(500).json({ success: false, message: 'Error during admin OTP verification.' });
+/** GET /api/auth/me */
+async function me(req, res) {
+  const user = await User.findById(req.userId);
+  if (!user) throw new HttpError(404, 'Voter not found.');
+  res.json({ success: true, user: publicUser(user) });
+}
+
+function publicUser(user) {
+  return {
+    id: user._id,
+    username: user.username,
+    maskedAadhaar: user.maskedAadhaar,
+    maskedPhone: maskPhone(user.phoneNumber),
+    state: user.state,
+    hasVoted: user.hasVoted,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Admins
+// ---------------------------------------------------------------------------
+
+/** POST /api/auth/admin-login */
+async function adminLogin(req, res) {
+  const phoneNumber = String(req.body.phoneNumber || '').trim();
+  if (!phoneNumber) throw new HttpError(400, 'Mobile number is required.');
+  if (!config.adminPhones.includes(phoneNumber)) throw new HttpError(403, 'This number is not authorised for admin access.');
+
+  let admin = await Admin.findOne({ phoneNumber });
+  if (!admin) admin = new Admin({ phoneNumber });
+
+  const dev = await issueOtp(admin);
+  res.json({
+    success: true,
+    message: `Admin OTP sent to ${maskPhone(phoneNumber)}.`,
+    adminId: admin._id,
+    maskedPhone: maskPhone(phoneNumber),
+    ...dev,
+  });
+}
+
+/** POST /api/auth/admin-verify-otp */
+async function adminVerifyOTP(req, res) {
+  const { adminId, otp } = req.body;
+  if (!adminId || !otp) throw new HttpError(400, 'Admin ID and OTP are required.');
+
+  const admin = await Admin.findById(adminId).catch(() => null);
+  if (!admin || !config.adminPhones.includes(admin.phoneNumber)) {
+    throw new HttpError(403, 'This number is not authorised for admin access.');
   }
-};
 
-/**
- * WebAuthn Passkeys: Bind mapped authentication hardware to native profile.
- */
-const registerBiometric = async (req, res) => {
-   try {
-       const user = await User.findById(req.userId);
-       if (!user) return res.status(404).json({ success: false, message: 'User mapping failure.' });
-       
-       user.biometricCredentialId = req.body.biometricCredentialId;
-       await user.save();
-       return res.status(200).json({ success: true, message: 'Hardware fingerprint physically secured.' });
-   } catch(e) {
-       return res.status(500).json({ success: false, message: 'Failed capturing device credentials.' });
-   }
-};
+  await consumeOtp(admin, otp);
+  res.json({
+    success: true,
+    message: 'Admin authentication successful.',
+    token: signAdminToken(admin),
+    admin: { id: admin._id, maskedPhone: maskPhone(admin.phoneNumber) },
+  });
+}
 
-/**
- * WebAuthn Passkeys: Authenticate mapped hardware exclusively, natively minting standard JSON token overrides.
- */
-const verifyBiometricLogin = async (req, res) => {
-   try {
-       const { userId, credentialId } = req.body;
-       const user = await User.findById(userId);
-       
-       if (!user || user.biometricCredentialId !== credentialId) {
-          return res.status(403).json({ success: false, message: 'Unrecognized Physical Node Identifier!' });
-       }
-       
-       // Instant physical Mint bypassing OTP sequences
-       const token = jwt.sign(
-         { userId: user._id, voterIdHash: user.voterIdHash, isOtpVerified: true, state: user.state },
-         process.env.JWT_SECRET, { expiresIn: '24h' }
-       );
-
-       return res.status(200).json({
-         success: true, 
-         message: 'Biometric authorization visually certified.',
-         token, 
-         userId: user._id, 
-         username: user.username, 
-         state: user.state
-       });
-   } catch (e) {
-       return res.status(500).json({ success: false, message: 'Fatal exception interrogating TouchID sensor layer.' });
-   }
-};
-
-module.exports = {
-  authenticate,
-  verifyOTP,
-  resendOTP,
-  adminLogin,
-  adminVerifyOTP,
-  registerBiometric,
-  verifyBiometricLogin
-};
+module.exports = { authenticate, verifyOTP, resendOTP, me, adminLogin, adminVerifyOTP };

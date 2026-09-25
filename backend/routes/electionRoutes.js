@@ -1,18 +1,11 @@
-/**
- * Election Routes
- * Endpoints for election settings and candidate retrieval
- */
-
 const express = require('express');
-const electionController = require('../controllers/electionController');
-const auth = require('../middleware/auth');
+const election = require('../controllers/electionController');
+const { requireVoter } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Get election settings (public - no auth needed)
-router.get('/settings', electionController.getElectionSettings);
-
-// Get candidates for election type (requires auth)
-router.get('/candidates', auth.verifyToken, electionController.getCandidatesByElectionType);
+router.get('/settings', election.getElectionSettings);
+router.get('/candidates', requireVoter, election.getCandidates);
+router.get('/results', election.getPublicResults);
 
 module.exports = router;

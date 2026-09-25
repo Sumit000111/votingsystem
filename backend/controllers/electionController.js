@@ -1,122 +1,93 @@
 /**
- * Election Controller
- * Handles election settings and configuration
+ * Public election information: settings, the voter's ballot and declared results.
  */
 
 const ElectionSettings = require('../models/ElectionSettings');
 const Party = require('../models/Party');
+const User = require('../models/User');
+const HttpError = require('../utils/httpError');
+const chain = require('../services/chain');
 
-/**
- * Get election settings
- * GET /elections/settings
- */
-const getElectionSettings = async (req, res) => {
-  try {
-    let settings = await ElectionSettings.findOne({});
+function publicSettings(settings) {
+  return {
+    name: settings.name,
+    status: settings.status,
+    nationalElectionEnabled: settings.nationalElectionEnabled,
+    stateElectionEnabled: settings.stateElectionEnabled,
+    description: settings.description,
+  };
+}
 
-    // If no settings exist, create default
-    if (!settings) {
-      settings = new ElectionSettings({
-        nationalElectionEnabled: true,
-        stateElectionEnabled: false,
-      });
-      await settings.save();
-    }
+function formatParty(party) {
+  return {
+    id: party._id,
+    name: party.name,
+    abbreviation: party.abbreviation,
+    symbol: party.symbol,
+    image: party.image,
+    color: party.color,
+    ideology: party.ideology,
+    partyType: party.partyType,
+  };
+}
 
-    return res.status(200).json({
-      success: true,
-      settings: {
-        nationalElectionEnabled: settings.nationalElectionEnabled,
-        stateElectionEnabled: settings.stateElectionEnabled,
-        status: settings.status,
-        name: settings.name,
-      },
-    });
-  } catch (error) {
-    console.error('Get election settings error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error fetching election settings.',
-      error: error.message,
-    });
+/** Parties on the ballot for an election type, for a voter's state. */
+function ballotQuery(type, state) {
+  if (type === 'national') return { isActive: true, partyType: 'national' };
+  if (type === 'state') return { isActive: true, activeStates: state };
+  throw new HttpError(400, 'Election type must be "national" or "state".');
+}
+
+/** GET /api/elections/settings */
+async function getElectionSettings(req, res) {
+  const settings = await ElectionSettings.current();
+  res.json({ success: true, settings: publicSettings(settings) });
+}
+
+/** GET /api/elections/candidates?type=national|state (voter) */
+async function getCandidates(req, res) {
+  const type = req.query.type || 'national';
+  const user = await User.findById(req.userId).select('state');
+  if (!user) throw new HttpError(404, 'Voter not found.');
+
+  const settings = await ElectionSettings.current();
+  const enabled = type === 'national' ? settings.nationalElectionEnabled : settings.stateElectionEnabled;
+  if (!enabled) throw new HttpError(400, `The ${type} election is not open.`);
+
+  const parties = await Party.find(ballotQuery(type, user.state)).sort({ partyType: 1, name: 1 }).lean();
+  res.json({ success: true, type, state: user.state, candidates: parties.map(formatParty) });
+}
+
+/** GET /api/elections/results — public once the election is completed. */
+async function getPublicResults(req, res) {
+  const settings = await ElectionSettings.current();
+  if (settings.status !== 'completed') {
+    throw new HttpError(403, 'Results will be published once the election is closed.');
   }
-};
+  const [onChain, parties] = await Promise.all([chain.getOnChainCandidates(), Party.find({}).lean()]);
+  const byChainId = new Map(parties.map((p) => [p.chainId, p]));
+  const total = onChain.reduce((sum, c) => sum + c.voteCount, 0);
 
-/**
- * Get candidates for election type
- * GET /elections/candidates?type=national or /elections/candidates?type=state
- * State parameter required for state elections
- */
-const getCandidatesByElectionType = async (req, res) => {
-  try {
-    const { type } = req.query;
-    const userState = req.query.state || null;
-    console.log(`[DEBUG] getCandidatesByElectionType: type=${type}, state=${userState}`);
+  const results = onChain
+    .map((c) => {
+      const party = byChainId.get(c.id);
+      return {
+        ...(party ? formatParty(party) : { name: c.name, abbreviation: c.party }),
+        votes: c.voteCount,
+        share: total ? c.voteCount / total : 0,
+      };
+    })
+    .sort((a, b) => b.votes - a.votes);
 
-    let candidates;
+  const status = await chain.getStatus();
+  res.json({
+    success: true,
+    election: publicSettings(settings),
+    totalVotes: total,
+    results,
+    contractAddress: status.contract?.address || null,
+    source: 'blockchain',
+  });
+}
 
-    if (type === 'national') {
-      // National parties only
-      candidates = await Party.find({
-        isActive: true,
-        partyType: 'national',
-      })
-        .select('name abbreviation symbol image ideology')
-        .lean();
-    } else if (type === 'state') {
-      // State parties for user's state
-      if (!userState) {
-        return res.status(400).json({
-          success: false,
-          message: 'State is required for state election.',
-        });
-      }
-
-      candidates = await Party.find({
-        isActive: true,
-        activeStates: userState,
-      })
-        .select('name abbreviation symbol image ideology')
-        .lean();
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid election type. Use "national" or "state".',
-      });
-    }
-
-    if (candidates.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: `No candidates available for ${type} election.`,
-      });
-    }
-
-    const formatted = candidates.map((party) => ({
-      id: party._id,
-      name: party.name,
-      party: party.abbreviation,
-      symbol: party.symbol,
-      image: party.image,
-      ideology: party.ideology,
-    }));
-
-    return res.status(200).json({
-      success: true,
-      message: `${type.charAt(0).toUpperCase() + type.slice(1)} candidates retrieved.`,
-      candidates: formatted,
-    });
-  } catch (error) {
-    console.error('Get candidates error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error fetching candidates.',
-      error: error.message,
-    });
-  }
-};
-
-module.exports = {
-  getElectionSettings,
-  getCandidatesByElectionType,
-};
+module.exports = { getElectionSettings, getCandidates, getPublicResults, ballotQuery, formatParty, publicSettings };

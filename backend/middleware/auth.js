@@ -1,102 +1,59 @@
 /**
- * Authentication Middleware
- * Verifies JWT tokens and OTP verification status
+ * JWT authentication. Voter tokens are only issued after OTP verification;
+ * admin tokens carry `role: 'admin'`.
  */
 
 const jwt = require('jsonwebtoken');
+const config = require('../config');
 
-/**
- * Middleware to verify JWT token
- * Checks if the request has a valid JWT token
- */
-const verifyToken = (req, res, next) => {
-  try {
-    // Extract token from Authorization header
-    const token = req.headers.authorization?.split(' ')[1];
+function signVoterToken(user) {
+  return jwt.sign(
+    { sub: String(user._id), role: 'voter', voterIdHash: user.voterIdHash, state: user.state },
+    config.jwtSecret,
+    { expiresIn: config.jwtExpiresIn }
+  );
+}
 
+function signAdminToken(admin) {
+  return jwt.sign({ sub: String(admin._id), role: 'admin' }, config.jwtSecret, {
+    expiresIn: config.jwtExpiresIn,
+  });
+}
+
+function readToken(req, { allowQuery = false } = {}) {
+  const header = req.headers.authorization || '';
+  if (header.startsWith('Bearer ')) return header.slice(7);
+  // EventSource cannot send headers, so the live stream accepts ?token=
+  if (allowQuery && typeof req.query.token === 'string') return req.query.token;
+  return null;
+}
+
+function authenticate(role, options) {
+  return (req, res, next) => {
+    const token = readToken(req, options);
     if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'No token provided. Authorization required.',
-      });
+      return res.status(401).json({ success: false, message: 'Authentication required.' });
     }
-
-    // Verify the token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.userId = decoded.userId;
-    req.voterIdHash = decoded.voterIdHash;
-
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid or expired token.',
-      error: error.message,
-    });
-  }
-};
-
-/**
- * Middleware to verify OTP verification status
- * Ensures user has verified OTP before accessing voting
- */
-const verifyOTP = (req, res, next) => {
-  try {
-    // Extract token from Authorization header
-    const token = req.headers.authorization?.split(' ')[1];
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'No token provided.',
-      });
+    let payload;
+    try {
+      payload = jwt.verify(token, config.jwtSecret);
+    } catch {
+      return res.status(401).json({ success: false, message: 'Session expired. Please sign in again.' });
     }
-
-    // Verify the token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // Check if OTP is verified in token
-    if (!decoded.isOtpVerified) {
+    if (payload.role !== role) {
       return res.status(403).json({
         success: false,
-        message: 'OTP not verified. Please verify OTP first.',
+        message: role === 'admin' ? 'Admin access required.' : 'Voter access required.',
       });
     }
+    req.auth = payload;
+    req.userId = payload.sub;
+    return next();
+  };
+}
 
-    req.userId = decoded.userId;
-    req.voterIdHash = decoded.voterIdHash;
+const requireVoter = authenticate('voter');
+const requireAdmin = authenticate('admin');
+const requireAdminStream = authenticate('admin', { allowQuery: true });
 
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid token.',
-    });
-  }
-};
-
-/**
- * Middleware to verify Admin JWT token
- */
-const verifyAdmin = (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({ success: false, message: 'No token provided.' });
-    }
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (!decoded.isAdminAccount || !decoded.isOtpVerified) {
-      return res.status(403).json({ success: false, message: 'Admin access required.' });
-    }
-    req.userId = decoded.userId;
-    next();
-  } catch (error) {
-    return res.status(401).json({ success: false, message: 'Invalid admin token.' });
-  }
-};
-
-module.exports = {
-  verifyToken,
-  verifyOTP,
-  verifyAdmin,
-};
+module.exports = { signVoterToken, signAdminToken, requireVoter, requireAdmin, requireAdminStream };

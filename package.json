@@ -1,27 +1,29 @@
 {
-  "name": "votingsys",
-  "version": "1.0.0",
-  "description": "A complete full-stack voting application built with Node.js, Express, MongoDB, and blockchain integration. This system ensures secure, transparent, and tamper-proof voting through blockchain technology.",
-  "main": "index.js",
+  "name": "national-voting-system",
+  "version": "2.0.0",
+  "private": true,
+  "description": "MERN + Hardhat blockchain voting system with an admin blockchain explorer",
+  "workspaces": [
+    "blockchain",
+    "backend",
+    "frontend"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Krish-Depani/Decentralized-Voting-System.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/Krish-Depani/Decentralized-Voting-System/issues"
-  },
-  "homepage": "https://github.com/Krish-Depani/Decentralized-Voting-System#readme",
-  "dependencies": {
-    "ethers": "^6.16.0"
+    "chain": "npm run node -w blockchain",
+    "compile": "npm run compile -w blockchain",
+    "deploy": "npm run deploy:local -w blockchain",
+    "server": "npm run dev -w backend",
+    "client": "npm run dev -w frontend",
+    "seed": "npm run seed -w backend",
+    "reset-votes": "npm run reset-votes -w backend",
+    "dev": "concurrently -k -n chain,api,web -c yellow,cyan,green \"npm run chain\" \"wait-on -t 60000 tcp:127.0.0.1:8545 && npm run deploy && npm run server\" \"npm run client\"",
+    "build": "npm run build -w frontend",
+    "start": "npm start -w backend",
+    "test": "npm test -w blockchain && npm test -w backend"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^6.1.2",
-    "hardhat": "^2.28.6"
-  }
+    "concurrently": "^9.2.1",
+    "wait-on": "^8.0.5"
+  },
+  "license": "MIT"
 }

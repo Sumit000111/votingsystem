@@ -1,107 +1,37 @@
 /**
- * User Model
- * Stores user information and voting status
+ * Voter account. Raw Aadhaar / Voter ID numbers are never stored: voters are
+ * identified by the SHA-256 hash of Aadhaar + Voter ID (`voterIdHash`).
  */
 
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema(
   {
-    // Hashed voter ID (SHA-256 hash of Aadhaar + PAN)
-    // This is the unique identifier instead of storing raw Aadhaar/PAN
-    voterIdHash: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-    },
+    voterIdHash: { type: String, required: true, unique: true, trim: true },
 
-    // Username chosen by the user during registration
-    username: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-      minlength: 3,
-    },
+    // Display name only, e.g. "Voter 3fa2c1b0". Never the Aadhaar number.
+    username: { type: String, required: true, trim: true },
 
-    // Phone number for MSG91 OTP
-    phoneNumber: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    // Last four digits for display ("XXXX XXXX 1234").
+    maskedAadhaar: { type: String, default: null },
 
-    // Password hashed using bcrypt
-    // Raw passwords are NEVER stored
-    // Optional: Not required for Aadhaar+PAN based login
-    password: {
-      type: String,
-      default: '',
-    },
+    phoneNumber: { type: String, required: true, trim: true },
+    state: { type: String, default: null },
 
-    // Flag to check if user has already voted
-    // Ensures each user can vote only once
-    hasVoted: {
-      type: Boolean,
-      default: false,
-    },
+    hasVoted: { type: Boolean, default: false },
+    votedFor: { type: String, default: null },
+    // Short-lived lock that stops two concurrent ballots from the same voter.
+    voteLockUntil: { type: Date, default: null },
 
-    // Name of the candidate user voted for (if hasVoted is true)
-    votedFor: {
-      type: String,
-      default: null,
-    },
-
-    // User's state selection (for state-specific voting)
-    state: {
-      type: String,
-      default: null,
-    },
-
-    // OTP related fields
-    otp: {
-      type: String,
-      default: null,
-    },
-
-    // OTP expiration time
-    otpExpiry: {
-      type: Date,
-      default: null,
-    },
-
-    // Whether user has verified OTP
-    isOtpVerified: {
-      type: Boolean,
-      default: false,
-    },
-
-    // WebAuthn Passkeys Biometric Credential ID
-    biometricCredentialId: {
-      type: String,
-      default: null,
-    },
-
-    // Account creation timestamp
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-
-    // Last updated timestamp
-    updatedAt: {
-      type: Date,
-      default: Date.now,
-    },
+    otpHash: { type: String, default: null },
+    otpExpiry: { type: Date, default: null },
+    otpAttempts: { type: Number, default: 0 },
+    otpSentAt: { type: Date, default: null },
+    lastLoginAt: { type: Date, default: null },
   },
-  {
-    timestamps: true, // Automatically add createdAt and updatedAt fields
-  }
+  { timestamps: true }
 );
 
-// Index on voterIdHash for faster lookups
-userSchema.index({ voterIdHash: 1 });
-userSchema.index({ username: 1 });
+userSchema.index({ state: 1, hasVoted: 1 });
 
 module.exports = mongoose.model('User', userSchema, 'users');

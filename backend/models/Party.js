@@ -1,77 +1,32 @@
 /**
- * Party Model
- * Stores political party information for voting system
+ * Political party / candidate. `chainId` is keccak256(name) — the id the
+ * candidate is registered under in the Voting contract.
  */
 
 const mongoose = require('mongoose');
+const { ethers } = require('ethers');
 
 const partySchema = new mongoose.Schema(
   {
-    // Party name
-    name: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-    },
-
-    // Party abbreviation
-    abbreviation: {
-      type: String,
-      required: true,
-      unique: true,
-      uppercase: true,
-    },
-
-    // Party symbol (emoji or unicode)
-    symbol: {
-      type: String,
-      default: '✓',
-    },
-
-    // Party logo/image URL
-    image: {
-      type: String,
-      default: '',
-    },
-
-    // Ideology/Political description
-    ideology: {
-      type: String,
-      default: '',
-    },
-
-    // Party type: national, state, or regional
-    partyType: {
-      type: String,
-      enum: ['national', 'state', 'regional'],
-      default: 'national',
-    },
-
-    // States where party is active (for state parties)
-    activeStates: {
-      type: [String],
-      default: [],
-    },
-
-    // Vote count in current election
-    voteCount: {
-      type: Number,
-      default: 0,
-    },
-
-    // Is party active/participating in voting
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
+    name: { type: String, required: true, unique: true, trim: true },
+    abbreviation: { type: String, required: true, unique: true, uppercase: true, trim: true },
+    symbol: { type: String, default: '✓' },
+    image: { type: String, default: '' },
+    // Brand colour used for charts and generated badges.
+    color: { type: String, default: '#FF9933' },
+    ideology: { type: String, default: '' },
+    partyType: { type: String, enum: ['national', 'state', 'regional'], default: 'national' },
+    activeStates: { type: [String], default: [] },
+    isActive: { type: Boolean, default: true },
+    chainId: { type: String, index: true },
   },
-  { collection: 'parties' }
+  { collection: 'parties', timestamps: true }
 );
+
+partySchema.pre('validate', function setChainId() {
+  if (this.name && (this.isModified('name') || !this.chainId)) {
+    this.chainId = ethers.id(this.name);
+  }
+});
 
 module.exports = mongoose.model('Party', partySchema);

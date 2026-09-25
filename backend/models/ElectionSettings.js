@@ -1,60 +1,28 @@
 /**
- * Election Settings Model
- * Admin controls which elections (national/state) are active
+ * Singleton document with the election configuration. `status` is mirrored
+ * on-chain as the contract phase: preparation → Registration,
+ * active → Voting, completed → Ended (irreversible).
  */
 
 const mongoose = require('mongoose');
 
 const electionSettingsSchema = new mongoose.Schema(
   {
-    // Election name/description
-    name: {
-      type: String,
-      default: '2024 Election',
-    },
-
-    // National election enabled?
-    nationalElectionEnabled: {
-      type: Boolean,
-      default: true,
-    },
-
-    // State election enabled?
-    stateElectionEnabled: {
-      type: Boolean,
-      default: false,
-    },
-
-    // Election status: active, preparation, completed
-    status: {
-      type: String,
-      enum: ['preparation', 'active', 'completed'],
-      default: 'active',
-    },
-
-    // Start and end times
-    startTime: {
-      type: Date,
-      default: Date.now,
-    },
-
-    endTime: {
-      type: Date,
-      default: null,
-    },
-
-    // Admin notes
-    description: {
-      type: String,
-      default: '',
-    },
-
-    updatedAt: {
-      type: Date,
-      default: Date.now,
-    },
+    name: { type: String, default: 'General Election 2026' },
+    nationalElectionEnabled: { type: Boolean, default: true },
+    stateElectionEnabled: { type: Boolean, default: false },
+    status: { type: String, enum: ['preparation', 'active', 'completed'], default: 'active' },
+    startTime: { type: Date, default: Date.now },
+    endTime: { type: Date, default: null },
+    description: { type: String, default: '' },
   },
-  { collection: 'electionSettings' }
+  { collection: 'electionSettings', timestamps: true }
 );
+
+electionSettingsSchema.statics.current = async function current() {
+  let settings = await this.findOne({});
+  if (!settings) settings = await this.create({});
+  return settings;
+};
 
 module.exports = mongoose.model('ElectionSettings', electionSettingsSchema);

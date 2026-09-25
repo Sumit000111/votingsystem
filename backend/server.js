@@ -1,179 +1,75 @@
 /**
- * Voting System - Main Server
- * Blockchain-Based Secure Voting System
- * Built with Express.js and MongoDB
+ * National Voting System — API server.
+ * Connects to MongoDB and the Ethereum node, reconciles the Voting contract
+ * with the database, and serves the REST API (plus the built React app).
  */
 
-require('dotenv').config(); // Load environment variables
-
-const express = require('express');
+const fs = require('fs');
 const mongoose = require('mongoose');
-const cors = require('cors');
-const path = require('path');
+const config = require('./config');
+const app = require('./app');
+const chain = require('./services/chain');
 
-// Import routes
-const authRoutes = require('./routes/authRoutes');
-const votingRoutes = require('./routes/votingRoutes');
-const electionRoutes = require('./routes/electionRoutes');
-
-// Initialize Express app
-const app = express();
-
-// =========================
-// Middleware Configuration
-// =========================
-
-// Enable CORS for frontend communication
-app.use(cors());
-
-// Parse JSON request bodies
-app.use(express.json());
-
-// Parse URL-encoded request bodies
-app.use(express.urlencoded({ extended: true }));
-
-// Serve static files from frontend directory
-app.use(express.static(path.join(__dirname, '../frontend')));
-
-// =========================
-// Request Logging Middleware
-// =========================
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  next();
-});
-
-// =========================
-// Database Connection
-// =========================
-
-const connectDB = async () => {
-  try {
-    const mongodbUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/voting-system';
-    
-    await mongoose.connect(mongodbUri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-
-    console.log('✓ Connected to MongoDB successfully');
-  } catch (error) {
-    console.error('⚠ MongoDB connection warning:', error.message);
-    console.log('⚠ Running in DEMO MODE - Database features unavailable');
-    console.log('   To enable database, set MONGODB_URI in .env or install MongoDB locally');
+async function connectDatabase() {
+  for (;;) {
+    try {
+      await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 5000 });
+      console.log(`✓ MongoDB connected (${mongoose.connection.name})`);
+      return;
+    } catch (err) {
+      console.error(`✗ MongoDB connection failed: ${err.message} — retrying in 5s`);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
   }
-};
+}
 
-// Connect to database
-connectDB();
+async function syncChain(reason) {
+  try {
+    const { actions, note } = await chain.syncWithDatabase();
+    if (actions.length) actions.forEach((a) => console.log(`✓ [chain] ${a}`));
+    else console.log(`✓ [chain] Contract in sync with database${note ? ` (${note})` : ''}`);
+  } catch (err) {
+    console.warn(`⚠ [chain] Sync skipped (${reason}): ${err.message}`);
+  }
+}
 
-// =========================
-// API Routes
-// =========================
+async function main() {
+  config.warnings.forEach((w) => console.warn(`⚠ ${w}`));
 
-/**
- * Auth routes: /register, /login, /verify-otp, /resend-otp
- */
-app.use('/api/auth', authRoutes);
-
-/**
- * Election routes: /elections/settings, /elections/candidates
- */
-app.use('/api/elections', electionRoutes);
-
-/**
- * Voting routes: /candidates, /vote, /results, /voting-status, /blockchain-info
- */
-app.use('/api/voting', votingRoutes);
-
-// =========================
-// Frontend Routes (Serve HTML Pages)
-// =========================
-
-/**
- * Serve login/registration page
- */
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
-});
-
-app.get('/index.html', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
-});
-
-/**
- * Serve OTP verification page
- */
-app.get('/otp.html', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/otp.html'));
-});
-
-/**
- * Serve voting dashboard page
- */
-app.get('/voting.html', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/voting.html'));
-});
-
-/**
- * Serve results page
- */
-app.get('/results.html', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/results.html'));
-});
-
-// =========================
-// Error Handling
-// =========================
-
-/**
- * 404 Not Found handler
- */
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'API endpoint not found.',
-    path: req.path,
+  const server = app.listen(config.port, () => {
+    console.log(`✓ API listening on http://localhost:${config.port}`);
   });
-});
 
-/**
- * Global error handler
- */
-app.use((err, req, res, next) => {
-  console.error('Server error:', err);
-  res.status(err.status || 500).json({
-    success: false,
-    message: err.message || 'Internal server error.',
+  await connectDatabase();
+
+  const status = await chain.getStatus();
+  if (!status.connected) {
+    console.warn(`⚠ [chain] ${status.error}`);
+  } else if (!status.contract?.deployed) {
+    console.warn(`⚠ [chain] ${status.contract?.reason}`);
+  } else {
+    console.log(`✓ [chain] Voting contract ${status.contract.address} on chain ${status.chainId} (phase: ${status.contract.phase})`);
+    await syncChain('startup');
+  }
+
+  // A redeploy (npm run deploy) rewrites deployment.json — re-sync automatically.
+  chain.onDeploymentChange((ctx) => {
+    console.log(`↻ [chain] New deployment detected at ${ctx.address}`);
+    syncChain('redeploy');
   });
+  fs.watchFile(config.chain.deploymentFile, { interval: 2000 }, () => chain.getContext());
+
+  const shutdown = async () => {
+    console.log('\nShutting down…');
+    server.close();
+    await mongoose.connection.close();
+    process.exit(0);
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
-
-// =========================
-// Start Server
-// =========================
-
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`
-========================================
-  Voting System Server Started
-========================================
-  URL: http://localhost:${PORT}
-  Environment: ${process.env.NODE_ENV || 'development'}
-  MongoDB: ${process.env.MONGODB_URI || 'mongodb://localhost:27017/voting-system'}
-========================================
-  `);
-});
-
-// =========================
-// Graceful Shutdown
-// =========================
-
-process.on('SIGINT', () => {
-  console.log('\n\n✓ Server shutting down...');
-  mongoose.connection.close();
-  process.exit(0);
-});
-
-module.exports = app;
