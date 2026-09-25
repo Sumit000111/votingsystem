@@ -1,0 +1,132 @@
+/* Bar list */
+.barlist-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.barlist-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.barlist-lead {
+  flex-shrink: 0;
+  display: inline-flex;
+}
+
+.barlist-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.barlist-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.barlist-name {
+  font-weight: 560;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.barlist-secondary {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.barlist-track {
+  height: 12px;
+  border-radius: 0 4px 4px 0;
+  background: var(--bar-track);
+  overflow: hidden;
+}
+
+.barlist-fill {
+  height: 100%;
+  background: var(--bar);
+  border-radius: 0 4px 4px 0;
+  opacity: 0.8;
+  transition: width 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.barlist-fill.emph {
+  opacity: 1;
+}
+
+.barlist-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 64px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+.barlist-value strong {
+  font-size: 15px;
+}
+
+/* Column chart */
+.columnchart {
+  position: relative;
+}
+
+.chart-tooltip {
+  position: absolute;
+  top: 0;
+  transform: translate(-50%, -100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Meter */
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 120px;
+}
+
+.meter-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bar) 18%, var(--surface));
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  background: var(--bar);
+  border-radius: 4px;
+}
+
+.meter-value {
+  font-size: 13px;
+  min-width: 48px;
+  text-align: right;
+}

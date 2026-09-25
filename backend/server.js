@@ -42,6 +42,11 @@ async function main() {
 
   await connectDatabase();
 
+  const Party = require('./models/Party');
+  if ((await Party.estimatedDocumentCount()) === 0) {
+    console.warn('⚠ No parties in the database yet — run `npm run seed` to load the ballot.');
+  }
+
   const status = await chain.getStatus();
   if (!status.connected) {
     console.warn(`⚠ [chain] ${status.error}`);
